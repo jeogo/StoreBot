@@ -33,7 +33,17 @@ app.use("/categories", categoryRoutes);
 // Product routes
 app.use("/products", productRoutes);
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+// Start server function
+export const startServer = () => {
+  return new Promise<void>((resolve, reject) => {
+    app
+      .listen(PORT, () => {
+        console.log(`Server running on http://localhost:${PORT}`);
+        resolve();
+      })
+      .on("error", (err) => {
+        console.error("Failed to start server:", err);
+        reject(err);
+      });
+  });
+};

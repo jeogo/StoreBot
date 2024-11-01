@@ -14,7 +14,7 @@ import {
 import { handleSupportCommand } from "./commands/support";
 
 // Import the Express server
-import "./server";
+import { startServer } from "./server";
 
 dotenv.config();
 
@@ -76,5 +76,9 @@ bot.catch((error) => {
 });
 
 // Start the bot
-bot.start();
-console.log("Bot is running...");
+startServer().then(() => {
+  bot.start();
+  console.log("Bot is running...");
+}).catch((err) => {
+  console.error("Failed to start the server:", err);
+});
