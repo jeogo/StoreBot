@@ -18,7 +18,7 @@ import { startServer } from "./server";
 
 dotenv.config();
 
-const bot = new Bot(process.env.BOT_TOKEN || "");
+const bot = new Bot(process.env.BOT_TOKEN || "6043532874:AAH3iAv1ve-R9vPrWW9l3B7WW4xhC04MDHo");
 
 // Start command to show the main menu
 bot.command("start", (ctx) => handleStartCommand(ctx));
