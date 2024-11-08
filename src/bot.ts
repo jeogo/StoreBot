@@ -1,3 +1,4 @@
+// src/bot.ts
 import { Bot, GrammyError, HttpError } from "grammy";
 import dotenv from "dotenv";
 import { handleStartCommand } from "./commands/start";
@@ -18,7 +19,7 @@ import { startServer } from "./server";
 
 dotenv.config();
 
-const bot = new Bot(process.env.BOT_TOKEN || "6043532874:AAH3iAv1ve-R9vPrWW9l3B7WW4xhC04MDHo");
+const bot = new Bot(process.env.BOT_TOKEN || "YOUR_BOT_TOKEN");
 
 // Start command to show the main menu
 bot.command("start", (ctx) => handleStartCommand(ctx));
@@ -75,10 +76,15 @@ bot.catch((error) => {
   );
 });
 
-// Start the bot
-startServer().then(() => {
-  bot.start();
-  console.log("Bot is running...");
-}).catch((err) => {
-  console.error("Failed to start the server:", err);
-});
+// Start the server and then the bot
+startServer()
+  .then(() => {
+    bot.start();
+    console.log("Bot is running...");
+  })
+  .catch((err) => {
+    console.error("Failed to start the server:", err);
+  });
+
+// Export the bot instance
+export { bot };

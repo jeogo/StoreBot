@@ -5,7 +5,7 @@ export const handleSupportCommand = (ctx: Context) => {
   try {
     const supportKeyboard = new InlineKeyboard().url(
       "📞 تواصل عبر WhatsApp",
-      "https://wa.me/1234567890"
+      "https://wa.me/213557349101"
     ); // Replace with actual WhatsApp number
 
     ctx.reply(

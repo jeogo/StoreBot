@@ -6,6 +6,7 @@ import cors from "cors";
 import userRoutes from "./routes/userRoutes";
 import productRoutes from "./routes/productRoutes";
 import categoryRoutes from "./routes/categoryRoutes";
+import notificationRoutes from "./routes/notificationRoutes"; // Import notification routes
 import { asyncHandler } from "./utils/asyncHandler";
 
 dotenv.config();
@@ -32,6 +33,9 @@ app.use("/categories", categoryRoutes);
 
 // Product routes
 app.use("/products", productRoutes);
+
+// Notification routes
+app.use("/notifications", notificationRoutes); // Add notification routes
 
 // Start server function
 export const startServer = () => {
