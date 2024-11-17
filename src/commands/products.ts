@@ -1,11 +1,17 @@
+// src/commands/products.ts
 import { Context, InlineKeyboard } from "grammy";
 import { connectToDB } from "../db";
 import { ObjectId } from "mongodb";
+import { Product } from "../models/product";
+import { Category } from "../models/category";
 
 export const handleProductsCommand = async (ctx: Context): Promise<void> => {
   try {
     const db = await connectToDB();
-    const categories = await db.collection("categories").find().toArray();
+    const categories = await db
+      .collection<Category>("categories")
+      .find()
+      .toArray();
 
     if (categories.length === 0) {
       ctx.reply("🚫 لا توجد فئات متاحة.");
@@ -31,7 +37,7 @@ export const handleCategorySelection = async (
   try {
     const db = await connectToDB();
     const products = await db
-      .collection("products")
+      .collection<Product>("products")
       .find({ categoryId: new ObjectId(categoryId) })
       .toArray();
 
@@ -42,10 +48,17 @@ export const handleCategorySelection = async (
 
     const keyboard = new InlineKeyboard();
     products.forEach((product) => {
-      keyboard.text(
-        `💼 ${product.name} - ${product.price} وحدة`,
-        `buy_${product._id}`
-      );
+      const quantity = product.emails.length;
+        let buttonText = ` ${product.name} - ${product.price} وحدة - الكمية: ${quantity}`;
+
+      if (quantity === 0 && product.allowPreOrder) {
+        buttonText = ` ${product.name} - ${product.price} وحدة - الكمية: 0 - متاح للطلب المسبق`;
+      } else if (quantity === 0) {
+        // If product is out of stock and doesn't allow pre-order
+        buttonText = ` ${product.name} - غير متوفر حاليًا`;
+      }
+
+      keyboard.text(buttonText, `buy_${product._id}`);
       keyboard.row();
     });
 

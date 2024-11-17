@@ -2,15 +2,17 @@
 import { Request, Response } from "express";
 import { ObjectId } from "mongodb";
 import { connectToDB } from "../db";
-import { Notification, NotificationHistoryEntry } from "../models/notification";
+import { Notification } from "../models/notification";
+import { HistoryEntry } from "../models/history";
 import { bot } from "../bot"; // Import the bot instance
+import { User } from "../models/user";
 
 // Fetch all notifications
 export const getAllNotifications = async (_req: Request, res: Response) => {
   try {
     const db = await connectToDB();
     const notifications = await db
-      .collection("notifications")
+      .collection<Notification>("notifications")
       .find()
       .sort({ createdAt: -1 })
       .toArray();
@@ -27,7 +29,7 @@ export const getNotificationById = async (req: Request, res: Response) => {
     const db = await connectToDB();
     const notificationId = new ObjectId(req.params.id);
     const notification = await db
-      .collection("notifications")
+      .collection<Notification>("notifications")
       .findOne({ _id: notificationId });
     if (!notification)
       return res.status(404).json({ error: "Notification not found" });
@@ -51,17 +53,31 @@ export const createNotification = async (req: Request, res: Response) => {
     const newNotification: Notification = {
       title,
       message,
-      notificationHistory: [
-        {
-          date: new Date(),
-          description: `Notification '${title}' created`,
-        } as NotificationHistoryEntry,
-      ],
+      createdAt: new Date(),
     };
 
     const result = await db
-      .collection("notifications")
+      .collection<Notification>("notifications")
       .insertOne(newNotification);
+
+    // Log the creation in the centralized history collection
+    const historyEntry: HistoryEntry = {
+      entity: "notification",
+      entityId: result.insertedId,
+      action: "created",
+      timestamp: new Date(),
+      performedBy: {
+        type: "admin",
+        id: null, // Replace with admin ID if available
+      },
+      details: `Notification '${title}' created`,
+      metadata: {
+        notificationId: result.insertedId,
+        title,
+      },
+    };
+    await db.collection<HistoryEntry>("history").insertOne(historyEntry);
+
     res.status(201).json({
       message: "Notification created",
       notificationId: result.insertedId,
@@ -80,29 +96,39 @@ export const updateNotificationById = async (req: Request, res: Response) => {
     const { title, message } = req.body;
 
     const existingNotification = await db
-      .collection("notifications")
+      .collection<Notification>("notifications")
       .findOne({ _id: notificationId });
     if (!existingNotification)
       return res.status(404).json({ error: "Notification not found" });
-
-    const updatedHistoryEntry: NotificationHistoryEntry = {
-      date: new Date(),
-      description: `Notification '${
-        title || existingNotification.title
-      }' updated`,
-    };
 
     const updatedFields: Partial<Notification> = {};
     if (title) updatedFields.title = title;
     if (message) updatedFields.message = message;
 
-    const result = await db.collection("notifications").updateOne(
+    const result = await db.collection<Notification>("notifications").updateOne(
       { _id: notificationId },
       {
         $set: updatedFields,
-        $push: { notificationHistory: updatedHistoryEntry as any },
       }
     );
+
+    // Log the update in the centralized history collection
+    const historyEntry: HistoryEntry = {
+      entity: "notification",
+      entityId: notificationId,
+      action: "updated",
+      timestamp: new Date(),
+      performedBy: {
+        type: "admin",
+        id: null,
+      },
+      details: `Notification '${existingNotification.title}' updated`,
+      metadata: {
+        notificationId,
+        updatedFields,
+      },
+    };
+    await db.collection<HistoryEntry>("history").insertOne(historyEntry);
 
     if (result.matchedCount === 0) {
       return res.status(404).json({ error: "Notification not found" });
@@ -120,12 +146,38 @@ export const deleteNotificationById = async (req: Request, res: Response) => {
   try {
     const db = await connectToDB();
     const notificationId = new ObjectId(req.params.id);
+
+    const existingNotification = await db
+      .collection<Notification>("notifications")
+      .findOne({ _id: notificationId });
+    if (!existingNotification)
+      return res.status(404).json({ error: "Notification not found" });
+
     const result = await db
-      .collection("notifications")
+      .collection<Notification>("notifications")
       .deleteOne({ _id: notificationId });
     if (result.deletedCount === 0) {
       return res.status(404).json({ error: "Notification not found" });
     }
+
+    // Log the deletion in the centralized history collection
+    const historyEntry: HistoryEntry = {
+      entity: "notification",
+      entityId: notificationId,
+      action: "deleted",
+      timestamp: new Date(),
+      performedBy: {
+        type: "admin",
+        id: null,
+      },
+      details: `Notification '${existingNotification.title}' deleted`,
+      metadata: {
+        notificationId,
+        title: existingNotification.title,
+      },
+    };
+    await db.collection<HistoryEntry>("history").insertOne(historyEntry);
+
     res.status(200).json({ message: "Notification deleted" });
   } catch (error) {
     console.error("Error deleting notification:", error);
@@ -140,14 +192,14 @@ export const sendNotificationById = async (req: Request, res: Response) => {
     const notificationId = new ObjectId(req.params.id);
 
     const notification = await db
-      .collection("notifications")
+      .collection<Notification>("notifications")
       .findOne({ _id: notificationId });
     if (!notification)
       return res.status(404).json({ error: "Notification not found" });
 
     const users = await db
-      .collection("users")
-      .find({}, { projection: { telegramId: 1 } })
+      .collection<User>("users")
+      .find({ isAccepted: true }, { projection: { telegramId: 1 } })
       .toArray();
 
     const BROADCAST_RATE = 30; // Messages per second
@@ -169,17 +221,23 @@ export const sendNotificationById = async (req: Request, res: Response) => {
       }
     }
 
-    await db.collection("notifications").updateOne(
-      { _id: notificationId },
-      {
-        $push: {
-          notificationHistory: {
-            date: new Date(),
-            description: "Notification sent to all users",
-          } as NotificationHistoryEntry as any,
-        },
-      }
-    );
+    // Log the action in the centralized history collection
+    const historyEntry: HistoryEntry = {
+      entity: "notification",
+      entityId: notificationId,
+      action: "sent",
+      timestamp: new Date(),
+      performedBy: {
+        type: "admin",
+        id: null,
+      },
+      details: "Notification sent to all users",
+      metadata: {
+        notificationId,
+        title: notification.title,
+      },
+    };
+    await db.collection<HistoryEntry>("history").insertOne(historyEntry);
 
     res.status(200).json({ message: "Notification sent to all users" });
   } catch (error) {

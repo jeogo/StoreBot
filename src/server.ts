@@ -1,4 +1,3 @@
-// src/server.ts
 import express, { Request, Response } from "express";
 import dotenv from "dotenv";
 import bodyParser from "body-parser";
@@ -6,7 +5,9 @@ import cors from "cors";
 import userRoutes from "./routes/userRoutes";
 import productRoutes from "./routes/productRoutes";
 import categoryRoutes from "./routes/categoryRoutes";
-import notificationRoutes from "./routes/notificationRoutes"; // Import notification routes
+import notificationRoutes from "./routes/notificationRoutes";
+import preOrderRoutes from "./routes/preOrderRoutes";
+import historicRoutes from "./routes/historicRoutes"; // Import historic routes
 import { asyncHandler } from "./utils/asyncHandler";
 
 dotenv.config();
@@ -35,7 +36,13 @@ app.use("/categories", categoryRoutes);
 app.use("/products", productRoutes);
 
 // Notification routes
-app.use("/notifications", notificationRoutes); // Add notification routes
+app.use("/notifications", notificationRoutes);
+
+// PreOrders routes
+app.use("/preorders", preOrderRoutes);
+
+// Historic routes
+app.use("/historic", historicRoutes);
 
 // Start server function
 export const startServer = () => {

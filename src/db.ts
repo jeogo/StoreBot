@@ -3,10 +3,10 @@ import dotenv from "dotenv";
 import { MongoClient, Db } from "mongodb";
 
 dotenv.config();
-
+const dbName: string = "chamso";
 const uri: string =
   process.env.MONGODB_URI ||
-  "mongodb+srv://admin:admin@chamso.nq0nw.mongodb.net/?retryWrites=true&w=majority&appName=chamso";
+  `mongodb+srv://admin:admin@chamso.nq0nw.mongodb.net/?retryWrites=true&w=majority&appName=${dbName}`;
 const client: MongoClient = new MongoClient(uri);
 
 let isConnected: boolean = false;
@@ -18,7 +18,7 @@ export const connectToDB = async (): Promise<Db> => {
     isConnected = true;
     console.log("Connected to MongoDB successfully.");
   }
-  return client.db("chamso"); // Replace 'chamso' with your database name
+  return client.db(dbName); // Replace 'chamso' with your database name
 };
 
-export const db = client.db("chamso");
+export const db = client.db(dbName);

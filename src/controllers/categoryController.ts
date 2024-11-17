@@ -2,13 +2,17 @@
 import { Request, Response } from "express";
 import { ObjectId } from "mongodb";
 import { connectToDB } from "../db";
-import { CategoryHistoryEntry } from "../models/category"; // Ensure to import CategoryHistoryEntry interface
+import { Category } from "../models/category";
+import { HistoryEntry } from "../models/history";
 
 // Fetch all categories
 export const getAllCategories = async (_req: Request, res: Response) => {
   try {
     const db = await connectToDB();
-    const categories = await db.collection("categories").find().toArray();
+    const categories = await db
+      .collection<Category>("categories")
+      .find()
+      .toArray();
     res.status(200).json(categories);
   } catch (error) {
     console.error("Error fetching categories:", error);
@@ -22,7 +26,7 @@ export const getCategoryById = async (req: Request, res: Response) => {
     const db = await connectToDB();
     const categoryId = new ObjectId(req.params.id);
     const category = await db
-      .collection("categories")
+      .collection<Category>("categories")
       .findOne({ _id: categoryId });
     if (!category) return res.status(404).json({ error: "Category not found" });
     res.status(200).json(category);
@@ -38,21 +42,38 @@ export const createCategory = async (req: Request, res: Response) => {
     const db = await connectToDB();
     const { name } = req.body;
 
-    const newCategory = {
+    const newCategory: Category = {
       name,
-      categoryHistory: [
-        {
-          date: new Date(),
-          type: "created",
-          description: `Category '${name}' created`,
-        } as CategoryHistoryEntry,
-      ],
+      createdDate: new Date(),
+      isActive: true,
     };
 
-    const result = await db.collection("categories").insertOne(newCategory);
-    res
-      .status(201)
-      .json({ message: "Category created", categoryId: result.insertedId });
+    const result = await db
+      .collection<Category>("categories")
+      .insertOne(newCategory);
+
+    // Log the creation in the centralized history collection
+    const historyEntry: HistoryEntry = {
+      entity: "category",
+      entityId: result.insertedId,
+      action: "created",
+      timestamp: new Date(),
+      performedBy: {
+        type: "admin",
+        id: null, // Replace with admin ID if available
+      },
+      details: `Category '${name}' created`,
+      metadata: {
+        categoryId: result.insertedId,
+        name,
+      },
+    };
+    await db.collection<HistoryEntry>("history").insertOne(historyEntry);
+
+    res.status(201).json({
+      message: "Category created",
+      categoryId: result.insertedId,
+    });
   } catch (error) {
     console.error("Error creating category:", error);
     res.status(500).json({ error: "Error creating category" });
@@ -64,31 +85,41 @@ export const updateCategoryById = async (req: Request, res: Response) => {
   try {
     const db = await connectToDB();
     const categoryId = new ObjectId(req.params.id);
-    const { name } = req.body;
+    const { name, isActive } = req.body;
 
     // Check if the category exists
     const category = await db
-      .collection("categories")
+      .collection<Category>("categories")
       .findOne({ _id: categoryId });
     if (!category) return res.status(404).json({ error: "Category not found" });
 
-    const updatedHistoryEntry: CategoryHistoryEntry = {
-      date: new Date(),
-      type: "updated",
-      description: `Category name updated to '${name}'`,
+    // Prepare updated fields
+    const updatedFields: Partial<Category> = {};
+    if (name) updatedFields.name = name;
+    if (typeof isActive === "boolean") updatedFields.isActive = isActive;
+
+    // Update the category
+    const result = await db
+      .collection<Category>("categories")
+      .updateOne({ _id: categoryId }, { $set: updatedFields });
+
+    // Log the update in the centralized history collection
+    const historyEntry: HistoryEntry = {
+      entity: "category",
+      entityId: categoryId,
+      action: "updated",
+      timestamp: new Date(),
+      performedBy: {
+        type: "admin",
+        id: null, // Replace with admin ID if available
+      },
+      details: `Category '${category.name}' updated`,
+      metadata: {
+        categoryId,
+        updatedFields,
+      },
     };
-
-    const result = await db.collection("categories").updateOne(
-      { _id: categoryId },
-      {
-        $set: { name },
-        $push: { categoryHistory: updatedHistoryEntry as unknown as any },
-      }
-    );
-
-    if (result.matchedCount === 0) {
-      return res.status(404).json({ error: "Category not found" });
-    }
+    await db.collection<HistoryEntry>("history").insertOne(historyEntry);
 
     res.status(200).json({ message: "Category updated" });
   } catch (error) {
@@ -102,12 +133,39 @@ export const deleteCategoryById = async (req: Request, res: Response) => {
   try {
     const db = await connectToDB();
     const categoryId = new ObjectId(req.params.id);
+
+    // Check if the category exists
+    const category = await db
+      .collection<Category>("categories")
+      .findOne({ _id: categoryId });
+    if (!category) return res.status(404).json({ error: "Category not found" });
+
+    // Delete the category
     const result = await db
-      .collection("categories")
+      .collection<Category>("categories")
       .deleteOne({ _id: categoryId });
     if (result.deletedCount === 0) {
       return res.status(404).json({ error: "Category not found" });
     }
+
+    // Log the deletion in the centralized history collection
+    const historyEntry: HistoryEntry = {
+      entity: "category",
+      entityId: categoryId,
+      action: "deleted",
+      timestamp: new Date(),
+      performedBy: {
+        type: "admin",
+        id: null, // Replace with admin ID if available
+      },
+      details: `Category '${category.name}' deleted`,
+      metadata: {
+        categoryId,
+        name: category.name,
+      },
+    };
+    await db.collection<HistoryEntry>("history").insertOne(historyEntry);
+
     res.status(200).json({ message: "Category deleted" });
   } catch (error) {
     console.error("Error deleting category:", error);

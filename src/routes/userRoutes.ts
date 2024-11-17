@@ -5,8 +5,8 @@ import {
   getUserById,
   updateUserById,
   deleteUserById,
-  updateUserBalanceById, // New import
-  resetUserAccountById, // New import
+  updateUserBalanceById, // Corrected import
+  resetUserBalanceById, // Corrected import
 } from "../controllers/userController";
 import { asyncHandler } from "../utils/asyncHandler";
 
@@ -29,7 +29,7 @@ router.delete("/:id", asyncHandler(deleteUserById));
 // Route to update user balance by ID
 router.put("/:id/balance", asyncHandler(updateUserBalanceById));
 
-// Route to reset user account by ID
-router.put("/:id/reset", asyncHandler(resetUserAccountById));
+// Route to reset user balance by ID
+router.put("/:id/reset", asyncHandler(resetUserBalanceById)); // Updated function name
 
 export default router;

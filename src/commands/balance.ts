@@ -1,6 +1,7 @@
 // src/commands/balance.ts
 import { Context } from "grammy";
 import { connectToDB } from "../db";
+import { User } from "../models/user"; // Import User interface
 import { formatBalanceMessage } from "../utils/messages";
 
 export const handleBalanceCommand = async (ctx: Context): Promise<void> => {
@@ -9,7 +10,7 @@ export const handleBalanceCommand = async (ctx: Context): Promise<void> => {
     if (!telegramId) return;
 
     const db = await connectToDB();
-    const user = await db.collection("users").findOne({ telegramId });
+    const user = await db.collection<User>("users").findOne({ telegramId });
 
     if (!user) {
       ctx.reply("لم يتم العثور على المستخدم. يُرجى التسجيل أولاً.");

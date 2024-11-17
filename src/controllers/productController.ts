@@ -2,13 +2,15 @@
 import { Request, Response } from "express";
 import { ObjectId } from "mongodb";
 import { connectToDB } from "../db";
-import { ProductHistoryEntry } from "../models/product";
+import { Product } from "../models/product";
+import { HistoryEntry } from "../models/history";
+import { Category } from "../models/category";
 
 // Fetch all products
 export const getAllProducts = async (_req: Request, res: Response) => {
   try {
     const db = await connectToDB();
-    const products = await db.collection("products").find().toArray();
+    const products = await db.collection<Product>("products").find().toArray();
     res.status(200).json(products);
   } catch (error) {
     console.error("Error fetching products:", error);
@@ -21,7 +23,9 @@ export const getProductById = async (req: Request, res: Response) => {
   try {
     const db = await connectToDB();
     const productId = new ObjectId(req.params.id);
-    const product = await db.collection("products").findOne({ _id: productId });
+    const product = await db
+      .collection<Product>("products")
+      .findOne({ _id: productId });
     if (!product) return res.status(404).json({ error: "Product not found" });
     res.status(200).json(product);
   } catch (error) {
@@ -41,6 +45,7 @@ export const createProduct = async (req: Request, res: Response) => {
       emails = [],
       categoryId,
       password = "default_password",
+      allowPreOrder = false,
     } = req.body;
 
     if (!price || !categoryId) {
@@ -51,31 +56,49 @@ export const createProduct = async (req: Request, res: Response) => {
 
     // Check if the category exists
     const category = await db
-      .collection("categories")
+      .collection<Category>("categories")
       .findOne({ _id: new ObjectId(categoryId) });
     if (!category)
       return res.status(400).json({ error: "Invalid category ID" });
 
-    const newProduct = {
+    const newProduct: Product = {
       name,
       description,
       price,
-      emails: emails.length > 0 ? emails : ["noemail@default.com"],
+      emails: emails.length > 0 ? emails : [],
       categoryId: new ObjectId(categoryId),
-      password,
-      productHistory: [
-        {
-          date: new Date(),
-          type: "created",
-          description: `Product '${name}' created`,
-        } as ProductHistoryEntry,
-      ],
+      allowPreOrder,
+      isAvailable: emails.length > 0,
+      createdDate: new Date(),
     };
+    const result = await db
+      .collection<Product>("products")
+      .insertOne(newProduct);
 
-    const result = await db.collection("products").insertOne(newProduct);
-    res
-      .status(201)
-      .json({ message: "Product created", productId: result.insertedId });
+    // Log the creation in the centralized history collection
+    const historyEntry: HistoryEntry = {
+      entity: "product",
+      entityId: result.insertedId,
+      action: "created",
+      timestamp: new Date(),
+      performedBy: {
+        type: "admin",
+        id: null,
+      },
+      details: `Product '${name}' created`,
+      metadata: {
+        productId: result.insertedId,
+        name,
+        price,
+        categoryId: newProduct.categoryId,
+      },
+    };
+    await db.collection<HistoryEntry>("history").insertOne(historyEntry);
+
+    res.status(201).json({
+      message: "Product created",
+      productId: result.insertedId,
+    });
   } catch (error) {
     console.error("Error creating product:", error);
     res.status(500).json({ error: "Error creating product" });
@@ -87,11 +110,19 @@ export const updateProductById = async (req: Request, res: Response) => {
   try {
     const db = await connectToDB();
     const productId = new ObjectId(req.params.id);
-    const { name, description, price, emails, categoryId, password } = req.body;
+    const {
+      name,
+      description,
+      price,
+      emails,
+      categoryId,
+      password,
+      allowPreOrder,
+    } = req.body;
 
     // Find the existing product to retrieve current values
     const existingProduct = await db
-      .collection("products")
+      .collection<Product>("products")
       .findOne({ _id: productId });
     if (!existingProduct)
       return res.status(404).json({ error: "Product not found" });
@@ -102,36 +133,51 @@ export const updateProductById = async (req: Request, res: Response) => {
     }
     if (categoryId) {
       const categoryExists = await db
-        .collection("categories")
+        .collection<Category>("categories")
         .findOne({ _id: new ObjectId(categoryId) });
       if (!categoryExists)
         return res.status(400).json({ error: "Category not found" });
     }
 
-    // Create a history entry for the update
-    const updatedHistoryEntry: ProductHistoryEntry = {
-      date: new Date(),
-      type: "updated",
-      description: `Product '${name || existingProduct.name}' updated`,
+    // Prepare the updated fields
+    const updatedFields: Partial<Product> = {
+      name: name ?? existingProduct.name,
+      description: description ?? existingProduct.description,
+      price: price ?? existingProduct.price,
+      emails: emails ?? existingProduct.emails,
+      allowPreOrder: allowPreOrder ?? existingProduct.allowPreOrder,
+      isAvailable: emails ? emails.length > 0 : existingProduct.isAvailable,
     };
 
-    // Update only the provided fields, retaining existing values where not provided
-    const result = await db.collection("products").updateOne(
+    if (categoryId) {
+      updatedFields.categoryId = new ObjectId(categoryId);
+    }
+
+    // Update the product
+    const result = await db.collection<Product>("products").updateOne(
       { _id: productId },
       {
-        $set: {
-          name: name ?? existingProduct.name,
-          description: description ?? existingProduct.description,
-          price: price ?? existingProduct.price,
-          emails: emails ?? existingProduct.emails,
-          categoryId: categoryId
-            ? new ObjectId(categoryId)
-            : existingProduct.categoryId,
-          password: password ?? existingProduct.password,
-        },
-        $push: { productHistory: updatedHistoryEntry as unknown as any },
+        $set: updatedFields,
       }
     );
+
+    // Log the update in the centralized history collection
+    const historyEntry: HistoryEntry = {
+      entity: "product",
+      entityId: productId,
+      action: "updated",
+      timestamp: new Date(),
+      performedBy: {
+        type: "admin",
+        id: null,
+      },
+      details: `Product '${existingProduct.name}' updated`,
+      metadata: {
+        productId,
+        updatedFields,
+      },
+    };
+    await db.collection<HistoryEntry>("history").insertOne(historyEntry);
 
     if (result.matchedCount === 0) {
       return res.status(404).json({ error: "Product not found" });
@@ -149,12 +195,40 @@ export const deleteProductById = async (req: Request, res: Response) => {
   try {
     const db = await connectToDB();
     const productId = new ObjectId(req.params.id);
+
+    // Find the existing product to retrieve current values
+    const existingProduct = await db
+      .collection<Product>("products")
+      .findOne({ _id: productId });
+    if (!existingProduct)
+      return res.status(404).json({ error: "Product not found" });
+
+    // Delete the product
     const result = await db
-      .collection("products")
+      .collection<Product>("products")
       .deleteOne({ _id: productId });
     if (result.deletedCount === 0) {
       return res.status(404).json({ error: "Product not found" });
     }
+
+    // Log the deletion in the centralized history collection
+    const historyEntry: HistoryEntry = {
+      entity: "product",
+      entityId: productId,
+      action: "deleted",
+      timestamp: new Date(),
+      performedBy: {
+        type: "admin",
+        id: null,
+      },
+      details: `Product '${existingProduct.name}' deleted`,
+      metadata: {
+        productId,
+        name: existingProduct.name,
+      },
+    };
+    await db.collection<HistoryEntry>("history").insertOne(historyEntry);
+
     res.status(200).json({ message: "Product deleted" });
   } catch (error) {
     console.error("Error deleting product:", error);
