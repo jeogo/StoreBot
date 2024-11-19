@@ -3,7 +3,7 @@ import dotenv from "dotenv";
 import { MongoClient, Db } from "mongodb";
 
 dotenv.config();
-const dbName: string = "chamso";
+const dbName = process.env.DBName;
 const uri: string =
   process.env.MONGODB_URI ||
   `mongodb+srv://admin:admin@chamso.nq0nw.mongodb.net/?retryWrites=true&w=majority&appName=${dbName}`;

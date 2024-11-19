@@ -1,117 +1,70 @@
-// src/controllers/preOrderController.ts
-
 import { Request, Response } from "express";
 import { ObjectId } from "mongodb";
 import { connectToDB } from "../db";
 import { HistoryEntry } from "../models/history";
 import { Product } from "../models/product";
 import { User } from "../models/user";
-import { bot } from "../bot"; // Import the bot to send messages to users
+import { bot } from "../bot";
 import { PreOrder } from "../models/preorder";
 
-// Create a new pre-order
-export const createPreOrder = async (req: Request, res: Response) => {
-  try {
-    const db = await connectToDB();
-    const { userId, productId, message } = req.body;
+const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || "5565239578";
 
-    // Validate input
-    if (!userId || !productId || !message) {
-      return res
-        .status(400)
-        .json({ error: "userId, productId, and message are required" });
-    }
+const formatCurrency = (amount: number): string => `${amount.toFixed(2)} وحدة`;
+// Telegram message templates in Arabic
+const telegramMessages = {
+  preOrderConfirmation: (productName: string, message: string) =>
+    `✅ تم تقديم طلبك المسبق للمنتج "${productName}" بنجاح!\n\n` +
+    `💬 الرسالة: "${message}"\n\n` +
+    `سنقوم بإخطارك فور توفر المنتج.`,
 
-    if (!ObjectId.isValid(userId) || !ObjectId.isValid(productId)) {
-      return res.status(400).json({ error: "Invalid userId or productId" });
-    }
+  adminPreOrderNotification: (
+    username: string,
+    userId: string,
+    productName: string,
+    price: number,
+    message: string
+  ) =>
+    `📦 تنبيه طلب مسبق جديد:\n\n` +
+    `👤 المستخدم: ${username} (المعرف: ${userId})\n` +
+    `📦 المنتج: ${productName}\n` +
+    `💰 السعر: ${price}\n` +
+    `💬 الرسالة: "${message}"\n\n` +
+    `يرجى مراجعة لوحة التحكم للتفاصيل.`,
 
-    const userObjectId = new ObjectId(userId);
-    const productObjectId = new ObjectId(productId);
+  fulfillmentNotification: (
+    productName: string,
+    message: string,
+    credentials: string
+  ) =>
+    `🎉 تم تنفيذ طلبك المسبق للمنتج "${productName}"!\n\n` +
+    `💬 الرسالة: "${message}"\n\n` +
+    `📧 بيانات الاعتماد:\n${credentials}\n\n` +
+    `شكراً لصبرك!`,
 
-    // Fetch user and product
-    const user = await db
-      .collection<User>("users")
-      .findOne({ _id: userObjectId });
-    const product = await db
-      .collection<Product>("products")
-      .findOne({ _id: productObjectId });
+  cancellationNotification: (
+    productName: string,
+    message: string,
+    refundAmount: number
+  ) =>
+    `❌ تم إلغاء طلبك المسبق للمنتج "${productName}".\n\n` +
+    `💬 الرسالة: "${message}"\n\n` +
+    `تم إعادة مبلغ ${refundAmount} إلى رصيدك.`,
 
-    if (!user) return res.status(404).json({ error: "User not found" });
-    if (!product) return res.status(404).json({ error: "Product not found" });
-
-    // Check if product allows pre-orders
-    if (!product.allowPreOrder) {
-      return res
-        .status(400)
-        .json({ error: "Product does not allow pre-orders" });
-    }
-
-    // Check if user has sufficient balance
-    if (user.balance < product.price) {
-      return res.status(400).json({ error: "Insufficient balance" });
-    }
-
-    // Deduct product price from user's balance
-    const newBalance = user.balance - product.price;
-    await db
-      .collection<User>("users")
-      .updateOne({ _id: userObjectId }, { $set: { balance: newBalance } });
-
-    // Create the pre-order
-    const newPreOrder: PreOrder = {
-      _id: new ObjectId(), // Ensure a new ObjectId is assigned
-      userId: userObjectId,
-      productId: productObjectId,
-      date: new Date(), // Assign Date object
-      status: "pending",
-      message, // Store the user's message
-      userName: user.username,
-      userTelegramId: user.telegramId,
-      productName: product.name,
-      productPrice: product.price,
-    };
-
-    const result = await db
-      .collection<PreOrder>("preorders")
-      .insertOne(newPreOrder);
-
-    // Log the pre-order creation in history
-    const historyEntry: HistoryEntry = {
-      entity: "preorder",
-      entityId: result.insertedId,
-      action: "created",
-      timestamp: new Date(), // Assign Date object
-      performedBy: {
-        type: "system", // Since there's no user performing this action
-        id: null,
-      },
-      details: `Pre-order created for product '${product.name}' with message: '${message}'`,
-      metadata: {
-        userId: userObjectId,
-        productId: productObjectId,
-        price: product.price,
-        message,
-      },
-    };
-
-    await db.collection<HistoryEntry>("history").insertOne(historyEntry);
-
-    // Send confirmation message to the user via the bot
-    const confirmationMessage = `✅ Your pre-order for product "${product.name}" has been placed successfully!\n\n💬 Message: "${message}"\n\nWe will notify you once the product is available.`;
-    await bot.api.sendMessage(user.telegramId, confirmationMessage);
-
-    res.status(201).json({
-      message: "Pre-order created successfully",
-      preOrderId: result.insertedId,
-    });
-  } catch (error) {
-    console.error("Error creating pre-order:", error);
-    res.status(500).json({ error: "Error creating pre-order" });
-  }
+  emailFulfillmentNotification: (
+    productName: string,
+    email: string,
+    message: string
+  ) =>
+    `🎉 أخبار سارة! تم تنفيذ طلبك المسبق للمنتج "${productName}".\n\n` +
+    `📧 البريد الإلكتروني المخصص: ${email}\n\n` +
+    `💬 رسالتك الأصلية: "${message}"\n\n` +
+    `شكراً لشرائك!`,
 };
 
-// Update a pre-order's status (e.g., cancel)
+// Create a new pre-order
+// Ensure ADMIN_TELEGRAM_ID is valid
+
+// Update a pre-order's status
 export const updatePreOrderStatus = async (req: Request, res: Response) => {
   try {
     const db = await connectToDB();
@@ -163,10 +116,12 @@ export const updatePreOrderStatus = async (req: Request, res: Response) => {
         );
 
       // Send fulfillment message with email and password via bot
-      await bot.api.sendMessage(
-        user.telegramId,
-        `🎉 Your pre-order for "${product.name}" has been fulfilled!\n\n💬 Message: "${preOrder.message}"\n\n📧 Credentials:\n${emailPassword}\n\nThank you for your patience!`
+      const fulfillmentMessage = telegramMessages.fulfillmentNotification(
+        product.name,
+        preOrder.message,
+        emailPassword
       );
+      await bot.api.sendMessage(user.telegramId, fulfillmentMessage);
     } else if (status === "canceled") {
       // Refund the user's balance
       const refundAmount = product.price;
@@ -180,10 +135,12 @@ export const updatePreOrderStatus = async (req: Request, res: Response) => {
         .updateOne({ _id: preOrderId }, { $set: { status } });
 
       // Send cancellation message via bot
-      await bot.api.sendMessage(
-        user.telegramId,
-        `❌ Your pre-order for "${product.name}" has been canceled.\n\n💬 Message: "${preOrder.message}"\n\nThe amount of ${refundAmount} has been refunded to your balance.`
+      const cancelMessage = telegramMessages.cancellationNotification(
+        product.name,
+        preOrder.message,
+        refundAmount
       );
+      await bot.api.sendMessage(user.telegramId, cancelMessage);
     }
 
     res.status(200).json({ message: "Pre-order status updated successfully" });
@@ -253,7 +210,7 @@ export const fulfillPreOrder = async (req: Request, res: Response) => {
         .json({ error: "No available emails to assign for fulfillment" });
     }
 
-    const assignedEmail = product.emails.shift(); // Get the first email
+    const assignedEmail = product.emails.shift();
     if (!assignedEmail) {
       return res
         .status(400)
@@ -274,7 +231,7 @@ export const fulfillPreOrder = async (req: Request, res: Response) => {
     // Update the pre-order status, fulfillmentDate, and fulfillmentDetails
     const updateFields: Partial<PreOrder> = {
       status: "fulfilled",
-      fulfillmentDate: new Date(), // Assign Date object
+      fulfillmentDate: new Date(),
       fulfillmentDetails,
     };
 
@@ -287,9 +244,9 @@ export const fulfillPreOrder = async (req: Request, res: Response) => {
       entity: "preorder",
       entityId: preOrderId,
       action: "fulfilled",
-      timestamp: new Date(), // Assign Date object
+      timestamp: new Date(),
       performedBy: {
-        type: "system", // Since there's no user performing this action
+        type: "system",
         id: null,
       },
       details: `Pre-order fulfilled with details: '${fulfillmentDetails}' and assigned email: '${assignedEmail}'`,
@@ -303,7 +260,11 @@ export const fulfillPreOrder = async (req: Request, res: Response) => {
     await db.collection<HistoryEntry>("history").insertOne(historyEntry);
 
     // Notify the user via the bot
-    const fulfillmentMessage = `🎉 Good news! Your pre-order for "${product.name}" has been fulfilled.\n\n📧 Assigned Email: ${assignedEmail}\n\n💬 Your original message: "${preOrder.message}"\n\nThank you for your purchase!`;
+    const fulfillmentMessage = telegramMessages.emailFulfillmentNotification(
+      product.name,
+      assignedEmail,
+      preOrder.message
+    );
     await bot.api.sendMessage(user.telegramId, fulfillmentMessage);
 
     res

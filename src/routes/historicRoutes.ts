@@ -1,18 +1,18 @@
-import express from "express";
+import { Router } from "express";
 import {
   getAllHistoricEntries,
-  getHistoricEntryById,
+  getEntityHistoricEntries, // Fetch history by entity
   deleteHistoricEntryById,
 } from "../controllers/historicController";
 import { asyncHandler } from "../utils/asyncHandler";
 
-const router = express.Router();
+const router = Router();
 
 // Fetch all historic records
 router.get("/", asyncHandler(getAllHistoricEntries));
 
-// Fetch a specific historic record by ID
-router.get("/:id", asyncHandler(getHistoricEntryById));
+// Fetch all history records for a specific entity (user or product)
+router.get("/:entity/:id", asyncHandler(getEntityHistoricEntries));
 
 // Delete a historic record by ID
 router.delete("/:id", asyncHandler(deleteHistoricEntryById));

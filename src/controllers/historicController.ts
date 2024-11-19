@@ -18,28 +18,29 @@ export const getAllHistoricEntries = async (req: Request, res: Response) => {
   }
 };
 
-// Fetch a specific historic record by ID
-export const getHistoricEntryById = async (req: Request, res: Response) => {
+// Fetch all history records for a specific entity (user or product)
+export const getEntityHistoricEntries = async (req: Request, res: Response) => {
   try {
     const db = await connectToDB();
-    const { id } = req.params;
+    const { id, entity } = req.params;
 
-    const entry = await db
+    const historyEntries = await db
       .collection<HistoryEntry>("history")
-      .findOne({ _id: new ObjectId(id) });
+      .find({ entityId: new ObjectId(id), entity })
+      .toArray();
 
-    if (!entry) {
-      return res.status(404).json({ error: "Historic entry not found" });
+    if (historyEntries.length === 0) {
+      return res
+        .status(404)
+        .json({ error: `No historic entries found for ${entity}.` });
     }
 
-    res.status(200).json(entry);
+    res.status(200).json(historyEntries);
   } catch (error) {
-    console.error("Error fetching historic entry:", error);
-    res.status(500).json({ error: "Failed to fetch historic entry" });
+    console.error("Error fetching entity historic entries:", error);
+    res.status(500).json({ error: "Failed to fetch entity historic entries." });
   }
 };
-
-
 
 // Delete a historic record by ID
 export const deleteHistoricEntryById = async (req: Request, res: Response) => {

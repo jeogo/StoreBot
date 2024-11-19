@@ -2,7 +2,6 @@
 
 import express from "express";
 import {
-  createPreOrder,
   getAllPreOrders,
   getPreOrderById,
   updatePreOrderStatus,
@@ -12,9 +11,6 @@ import {
 import { asyncHandler } from "../utils/asyncHandler";
 
 const router = express.Router();
-
-// Create a pre-order
-router.post("/", asyncHandler(createPreOrder));
 
 // Get all pre-orders
 router.get("/", asyncHandler(getAllPreOrders));

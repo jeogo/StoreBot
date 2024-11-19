@@ -4,7 +4,15 @@ import { ObjectId } from "mongodb";
 import { connectToDB } from "../db";
 import { User } from "../models/user";
 import { HistoryEntry } from "../models/history";
+import { bot } from "../bot"; // Import the bot instance
 
+const sendTelegramMessage = async (telegramId: string, message: string) => {
+  try {
+    await bot.api.sendMessage(telegramId, message);
+  } catch (error) {
+    console.error(`Failed to send Telegram message to ${telegramId}:`, error);
+  }
+};
 // Fetch all users
 export const getAllUsers = async (_req: Request, res: Response) => {
   try {
@@ -47,14 +55,22 @@ export const updateUserBalanceById = async (req: Request, res: Response) => {
 
     const newBalance = user.balance + amount;
 
-    // Optional: Ensure balance doesn't go negative
+    // Prevent negative balances if required
     if (newBalance < 0) {
       return res.status(400).json({ error: "Insufficient balance" });
     }
 
+    // Update totalRecharge only for positive amounts (recharges)
+    const newTotalRecharge =
+      amount > 0 ? (user.totalRecharge || 0) + amount : user.totalRecharge || 0;
+
+    // Update the user's balance and totalRecharge
     await db
       .collection<User>("users")
-      .updateOne({ _id: userId }, { $set: { balance: newBalance } });
+      .updateOne(
+        { _id: userId },
+        { $set: { balance: newBalance, totalRecharge: newTotalRecharge } }
+      ); 
 
     // Log the balance update to the history collection
     const historyEntry: HistoryEntry = {
@@ -70,12 +86,17 @@ export const updateUserBalanceById = async (req: Request, res: Response) => {
       metadata: {
         previousBalance: user.balance,
         newBalance,
+        totalRecharge: newTotalRecharge,
       },
     };
 
     await db.collection<HistoryEntry>("history").insertOne(historyEntry);
 
-    res.status(200).json({ message: "User balance updated", newBalance });
+    res.status(200).json({
+      message: "User balance updated",
+      newBalance,
+      totalRecharge: newTotalRecharge,
+    });
   } catch (error) {
     console.error("Error updating user balance:", error);
     res.status(500).json({ error: "Error updating user balance" });
@@ -114,6 +135,14 @@ export const updateUserById = async (req: Request, res: Response) => {
     await db
       .collection<User>("users")
       .updateOne({ _id: userId }, { $set: sanitizedUpdates });
+
+    // Check and send Telegram messages for specific updates
+    if ("isAccepted" in sanitizedUpdates) {
+      const message = sanitizedUpdates.isAccepted
+        ? "✅ تم قبول حسابك! يمكنك الآن استخدام البوت."
+        : "🚫 لقد تم حظر حسابك من قبل المسؤول.";
+      await sendTelegramMessage(existingUser.telegramId, message);
+    }
 
     // Log the update to the history collection
     const historyEntry: HistoryEntry = {

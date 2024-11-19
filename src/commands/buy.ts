@@ -5,9 +5,16 @@ import { ObjectId } from "mongodb";
 import { connectToDB } from "../db";
 import { User } from "../models/user";
 import { Product } from "../models/product";
-import { PreOrder } from "../models/preorder";
 import { HistoryEntry } from "../models/history";
-import { formatOutOfStockMessage } from "../utils/messages";
+import { bot } from "../bot";
+import {
+  createPreOrderInDB,
+  notifyUserAboutPreOrder,
+  notifyAdminAboutPreOrder,
+} from "./preorder"; // Import pre-order functions
+
+const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || "5565239578"; // Admin Telegram ID
+const formatCurrency = (amount: number): string => `${amount.toFixed(2)} وحدة`; // Customize your currency format
 
 // Define SessionData and MyContext locally
 interface SessionData {
@@ -120,12 +127,6 @@ export const handleBuyConfirmation = async (
     const telegramId = ctx.from?.id.toString();
     if (!telegramId) return;
 
-    // Clear any existing timeout
-    if (confirmationTimeouts[telegramId]) {
-      clearTimeout(confirmationTimeouts[telegramId]);
-      delete confirmationTimeouts[telegramId];
-    }
-
     const db = await connectToDB();
     const user = await db.collection<User>("users").findOne({ telegramId });
     const product = await db
@@ -133,37 +134,29 @@ export const handleBuyConfirmation = async (
       .findOne({ _id: new ObjectId(productId) });
 
     if (!user || !product) {
-      await sendSupportMessage(ctx);
+      await ctx.reply("❌ Error: User or product not found.");
       return;
     }
 
-    // Check if user has enough balance
+    // Check balance and product availability
     if (user.balance < product.price) {
-      await sendSupportMessage(ctx);
+      await ctx.reply("❌ Insufficient balance.");
       return;
     }
 
-    // Check product availability
     if (product.emails.length === 0) {
-      await ctx.reply(formatOutOfStockMessage());
+      await ctx.reply("❌ Product out of stock.");
       return;
     }
 
-    // Proceed with the purchase
+    // Deduct balance and update product availability
     const email = product.emails.shift();
-    if (!email) {
-      await ctx.reply(formatOutOfStockMessage());
-      return;
-    }
-
     const newBalance = user.balance - product.price;
 
-    // Update user's balance
     await db
       .collection<User>("users")
       .updateOne({ telegramId }, { $set: { balance: newBalance } });
 
-    // Update product email list and availability
     await db.collection<Product>("products").updateOne(
       { _id: new ObjectId(productId) },
       {
@@ -174,38 +167,100 @@ export const handleBuyConfirmation = async (
       }
     );
 
-    // Log the purchase in the history
+    // Notify user about purchase
+    await ctx.reply(
+      `🎉 تم شراء المنتج "${product.name}" بنجاح.\n📧 البريد الإلكتروني: ${email}`
+    );
+
+    // Log purchase in history
     const historyEntry: HistoryEntry = {
       entity: "purchase",
-      entityId: new ObjectId(), // Assign a new ObjectId or use an existing one if relevant
+      entityId: new ObjectId(productId),
       action: "purchase_made",
-      timestamp: new Date(), // Assign Date object
+      timestamp: new Date(),
       performedBy: {
         type: "user",
-        id: user._id.toHexString(), // Convert ObjectId to string
+        id: user._id.toHexString(),
       },
-      details: `User '${user.username}' purchased product '${product.name}'`,
+      details: `User '${user.username}' purchased '${product.name}'`,
       metadata: {
         userId: user._id,
         productId: product._id,
         price: product.price,
-        emailProvided: email,
+        email,
       },
     };
 
     await db.collection<HistoryEntry>("history").insertOne(historyEntry);
 
-    // Send the purchased email to the user
-    await ctx.reply(
-      `🎉 تهانينا! لقد تم شراء المنتج "${product.name}" بنجاح.\n\n📧 البريد الإلكتروني: ${email}\n\nشكرًا لتسوقك معنا!`
-    );
+    // Notify admin about the purchase
+    const adminMessage =
+      `🛒 **تنبيه عملية شراء**:\n\n` +
+      `👤 **المستخدم**: ${user.username} (ID: ${user._id})\n` +
+      `📦 **المنتج**: ${product.name}\n` +
+      `📉 **الكمية المتبقية**: ${product.emails.length}\n` +
+      `💰 **السعر**: ${formatCurrency(product.price)}\n\n` +
+      `يرجى مراجعة لوحة التحكم للتفاصيل.`;
+    await bot.api.sendMessage(ADMIN_TELEGRAM_ID, adminMessage);
   } catch (error) {
     console.error("Error in handleBuyConfirmation:", error);
-    await sendSupportMessage(ctx);
+    await ctx.reply("❌ Error processing purchase. Please try again.");
   }
 };
 
-// Function to handle pre-order confirmation
+// Updated handlePreOrderMessage
+export const handlePreOrderMessage = async (ctx: MyContext): Promise<void> => {
+  try {
+    const telegramId = ctx.from?.id.toString();
+    if (!telegramId) return;
+
+    if (
+      ctx.session.awaitingPreOrderMessage &&
+      ctx.session.preOrderProductId &&
+      ctx.message?.text
+    ) {
+      const db = await connectToDB();
+      const productId = ctx.session.preOrderProductId;
+      const message = ctx.message.text;
+
+      const user = await db.collection<User>("users").findOne({ telegramId });
+
+      if (!user) {
+        await ctx.reply("❌ المستخدم غير موجود.");
+        return;
+      }
+
+      // Create pre-order in the database
+      const preOrder = await createPreOrderInDB(
+        new ObjectId(user._id),
+        new ObjectId(productId),
+        message
+      );
+
+      if (!preOrder) {
+        await ctx.reply("❌ حدث خطأ أثناء إنشاء الطلب المسبق.");
+        return;
+      }
+
+      // Notify user
+      await notifyUserAboutPreOrder(preOrder);
+
+      // Notify admin
+      await notifyAdminAboutPreOrder(preOrder);
+
+      // Clear session variables
+      ctx.session.awaitingPreOrderMessage = false;
+      ctx.session.preOrderProductId = null;
+    } else {
+      await ctx.reply("❌ لا يوجد عملية طلب مسبق نشطة.");
+    }
+  } catch (error) {
+    console.error("Error in handlePreOrderMessage:", error);
+    await ctx.reply(
+      "حدث خطأ أثناء معالجة طلبك المسبق. يرجى المحاولة مرة أخرى لاحقًا."
+    );
+  }
+};
 export const handlePreOrderConfirmation = async (
   ctx: MyContext,
   productId: string
@@ -238,117 +293,15 @@ export const handlePreOrderConfirmation = async (
 
     // Ask the user for a message to include with the pre-order
     await ctx.reply("يرجى كتابة رسالة أو ملاحظة تريد إرفاقها مع طلبك المسبق:");
-    // Save the state that the bot is waiting for the user's message
     ctx.session.awaitingPreOrderMessage = true;
     ctx.session.preOrderProductId = productId;
   } catch (error) {
     console.error("Error in handlePreOrderConfirmation:", error);
     await ctx.reply(
-      "حدث خطأ أثناء معالجة الطلب المسبق. يرجى المحاولة مرة أخرى لاحقًا."
+      "حدث خطأ أثناء تأكيد الطلب المسبق. يرجى المحاولة مرة أخرى لاحقًا."
     );
   }
 };
-
-// Function to handle the user's message for pre-order
-export const handlePreOrderMessage = async (ctx: MyContext): Promise<void> => {
-  try {
-    const telegramId = ctx.from?.id.toString();
-    if (!telegramId) return;
-
-    if (
-      ctx.session.awaitingPreOrderMessage &&
-      ctx.session.preOrderProductId &&
-      ctx.message?.text
-    ) {
-      const db = await connectToDB();
-      const productId = ctx.session.preOrderProductId;
-      const message = ctx.message.text;
-
-      const product = await db.collection<Product>("products").findOne({
-        _id: new ObjectId(productId),
-      });
-
-      const user = await db.collection<User>("users").findOne({
-        telegramId,
-      });
-
-      if (!product || !user) {
-        await ctx.reply("❌ حدث خطأ. المنتج أو المستخدم غير موجود.");
-        return;
-      }
-
-      // Check if user has enough balance (again, just in case)
-      if (user.balance < product.price) {
-        await ctx.reply("❌ ليس لديك رصيد كافٍ لإتمام الطلب المسبق.");
-        return;
-      }
-
-      // Deduct the price from user's balance
-      const newBalance = user.balance - product.price;
-      await db
-        .collection<User>("users")
-        .updateOne({ _id: user._id }, { $set: { balance: newBalance } });
-
-      // Create the pre-order
-      const newPreOrder: PreOrder = {
-        _id: new ObjectId(), // Assign a new ObjectId
-        userId: user._id,
-        productId: product._id,
-        date: new Date(),
-        status: "pending",
-        message: message,
-        userName: user.username,
-        userTelegramId: user.telegramId,
-        productName: product.name,
-        productPrice: product.price,
-      };
-
-      const result = await db
-        .collection<PreOrder>("preorders")
-        .insertOne(newPreOrder);
-
-      // Log the pre-order in history
-      const historyEntry: HistoryEntry = {
-        entity: "preorder",
-        entityId: result.insertedId, // Assign the inserted pre-order's ObjectId
-        action: "preorder_created",
-        timestamp: new Date(), // Assign Date object
-        performedBy: {
-          type: "user",
-          id: user._id.toHexString(), // Convert ObjectId to string
-        },
-        details: `User '${user.username}' created a pre-order for product '${product.name}'`,
-        metadata: {
-          userId: user._id,
-          productId: product._id,
-          price: product.price,
-          message: message,
-        },
-      };
-
-      await db.collection<HistoryEntry>("history").insertOne(historyEntry);
-
-      // Send confirmation message to the user
-      await ctx.reply(
-        `✅ تم إنشاء طلبك المسبق للمنتج "${product.name}" بنجاح.\n\n💬 رسالتك: "${message}"\n\nسنقوم بإعلامك عندما يصبح المنتج متوفرًا. شكرًا لك!`
-      );
-
-      // Clear the session variables
-      ctx.session.awaitingPreOrderMessage = false;
-      ctx.session.preOrderProductId = null;
-    } else {
-      // If the bot wasn't expecting a pre-order message
-      await ctx.reply("❌ لا يوجد عملية طلب مسبق نشطة.");
-    }
-  } catch (error) {
-    console.error("Error in handlePreOrderMessage:", error);
-    await ctx.reply(
-      "حدث خطأ أثناء معالجة رسالتك للطلب المسبق. يرجى المحاولة مرة أخرى لاحقًا."
-    );
-  }
-};
-
-// Function to handle cancellation of purchase or pre-order
 export const handleCancelPurchase = async (ctx: MyContext): Promise<void> => {
   const telegramId = ctx.from?.id.toString();
   if (telegramId && confirmationTimeouts[telegramId]) {

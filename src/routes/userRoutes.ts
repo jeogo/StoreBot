@@ -1,12 +1,11 @@
-// src/routes/userRoutes.ts
 import express from "express";
 import {
   getAllUsers,
   getUserById,
   updateUserById,
   deleteUserById,
-  updateUserBalanceById, // Corrected import
-  resetUserBalanceById, // Corrected import
+  updateUserBalanceById,
+  resetUserBalanceById,
 } from "../controllers/userController";
 import { asyncHandler } from "../utils/asyncHandler";
 
@@ -18,18 +17,16 @@ router.get("/", asyncHandler(getAllUsers));
 // Route to get a user by ID
 router.get("/:id", asyncHandler(getUserById));
 
-// Route to update a user by ID (if needed)
+// Route to update a user by ID
 router.put("/:id", asyncHandler(updateUserById));
 
 // Route to delete a user by ID
 router.delete("/:id", asyncHandler(deleteUserById));
 
-// **New Routes**
-
 // Route to update user balance by ID
 router.put("/:id/balance", asyncHandler(updateUserBalanceById));
 
 // Route to reset user balance by ID
-router.put("/:id/reset", asyncHandler(resetUserBalanceById)); // Updated function name
+router.put("/:id/reset", asyncHandler(resetUserBalanceById));
 
 export default router;
