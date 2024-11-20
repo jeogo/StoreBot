@@ -13,9 +13,9 @@ import {
 import {
   initiateBuyCommand,
   handleBuyConfirmation,
-  handlePreOrderConfirmation,
   handlePreOrderMessage,
   handleCancelPurchase,
+  handlePreOrderConfirmation,
 } from "./commands/buy";
 import { handleAccountCommand } from "./commands/account";
 import { handleSupportCommand } from "./commands/support";
@@ -27,8 +27,6 @@ dotenv.config();
 if (!process.env.BOT_TOKEN) {
   throw new Error("BOT_TOKEN is not set in environment variables.");
 }
-
-const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || "5565239578";
 
 // Define session data interface
 interface SessionData {
@@ -71,7 +69,7 @@ bot.callbackQuery(/^category_(.*)$/, async (ctx) => {
     await ctx.answerCallbackQuery();
   } catch (error) {
     console.error("Error in category selection:", error);
-    await ctx.reply("حدث خطأ أثناء عرض الفئة. يُرجى المحاولة مرة أخرى.");
+    await ctx.reply("⚠️ حدث خطأ أثناء عرض الفئة. يُرجى المحاولة مرة أخرى.");
   }
 });
 
@@ -82,7 +80,7 @@ bot.callbackQuery(/^buy_(.*)$/, async (ctx) => {
     await ctx.answerCallbackQuery();
   } catch (error) {
     console.error("Error in purchase initiation:", error);
-    await ctx.reply("حدث خطأ أثناء بدء الشراء. يُرجى المحاولة مرة أخرى.");
+    await ctx.reply("⚠️ حدث خطأ أثناء بدء الشراء. يُرجى المحاولة مرة أخرى.");
   }
 });
 
@@ -93,7 +91,7 @@ bot.callbackQuery(/^confirm_(.*)$/, async (ctx) => {
     await ctx.answerCallbackQuery();
   } catch (error) {
     console.error("Error in purchase confirmation:", error);
-    await ctx.reply("حدث خطأ أثناء تأكيد الشراء. يُرجى المحاولة مرة أخرى.");
+    await ctx.reply("⚠️ حدث خطأ أثناء تأكيد الشراء. يُرجى المحاولة مرة أخرى.");
   }
 });
 
@@ -105,7 +103,7 @@ bot.callbackQuery(/^preorder_(.*)$/, async (ctx) => {
   } catch (error) {
     console.error("Error in pre-order confirmation:", error);
     await ctx.reply(
-      "حدث خطأ أثناء تأكيد الطلب المسبق. يُرجى المحاولة مرة أخرى."
+      "⚠️ حدث خطأ أثناء تأكيد الطلب المسبق. يُرجى المحاولة مرة أخرى."
     );
   }
 });
@@ -116,7 +114,7 @@ bot.callbackQuery(/^cancel_(.*)$/, async (ctx) => {
     await ctx.answerCallbackQuery();
   } catch (error) {
     console.error("Error in cancellation:", error);
-    await ctx.reply("حدث خطأ أثناء إلغاء العملية. يُرجى المحاولة مرة أخرى.");
+    await ctx.reply("⚠️ حدث خطأ أثناء إلغاء العملية. يُرجى المحاولة مرة أخرى.");
   }
 });
 
@@ -132,7 +130,9 @@ bot.on("message:text", async (ctx) => {
     }
   } catch (error) {
     console.error("Error in message handler:", error);
-    await ctx.reply("حدث خطأ أثناء معالجة الرسالة. يُرجى المحاولة مرة أخرى.");
+    await ctx.reply(
+      "⚠️ حدث خطأ أثناء معالجة الرسالة. يُرجى المحاولة مرة أخرى."
+    );
   }
 });
 
@@ -141,7 +141,7 @@ bot.catch((error) => {
   const ctx = error.ctx;
   console.error("Error while handling update:", error.error);
   ctx.reply(
-    "حدث خطأ غير متوقع. الرجاء المحاولة مرة أخرى لاحقًا أو التواصل مع الدعم."
+    "⚠️ حدث خطأ غير متوقع. الرجاء المحاولة مرة أخرى لاحقًا أو التواصل مع الدعم."
   );
 });
 
@@ -149,10 +149,10 @@ bot.catch((error) => {
 startServer()
   .then(() => {
     bot.start();
-    console.log("تم تشغيل البوت بنجاح...");
+    console.log("🤖 تم تشغيل البوت بنجاح...");
   })
   .catch((err) => {
-    console.error("فشل تشغيل الخادم:", err);
+    console.error("⚠️ فشل تشغيل الخادم:", err);
   });
 
 export { bot };

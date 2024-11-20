@@ -1,4 +1,3 @@
-// src/commands/preorder.ts
 import { ObjectId } from "mongodb";
 import { bot } from "../bot";
 import { connectToDB } from "../db";
@@ -8,7 +7,7 @@ import { User } from "../models/user";
 import { Product } from "../models/product";
 
 const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || "5565239578";
-const formatCurrency = (amount: number): string => `${amount.toFixed(2)} وحدة`;
+const formatCurrency = (amount: number): string => `${amount.toFixed(2)}₪`;
 
 /**
  * Creates a pre-order in the database.
@@ -22,13 +21,21 @@ export const createPreOrderInDB = async (
 
   // Fetch the user and product
   const user = await db.collection<User>("users").findOne({ _id: userId });
-  const product = await db.collection<Product>("products").findOne({ _id: productId });
+  const product = await db
+    .collection<Product>("products")
+    .findOne({ _id: productId });
 
   if (!user || !product) return null;
 
+  if (user.balance < product.price) {
+    throw new Error("Insufficient balance for pre-order.");
+  }
+
   // Deduct product price from user's balance
   const newBalance = user.balance - product.price;
-  await db.collection<User>("users").updateOne({ _id: userId }, { $set: { balance: newBalance } });
+  await db
+    .collection<User>("users")
+    .updateOne({ _id: userId }, { $set: { balance: newBalance } });
 
   // Create a pre-order
   const newPreOrder: PreOrder = {
@@ -85,12 +92,15 @@ const logPreOrderHistory = async (preOrder: PreOrder) => {
 export const notifyUserAboutPreOrder = async (preOrder: PreOrder) => {
   try {
     const userMessage =
-      `✅ تم إنشاء طلبك المسبق للمنتج "${preOrder.productName}" بنجاح.\n\n` +
-      `💬 رسالتك: "${preOrder.message}"\n\n` +
-      `💰 السعر: ${formatCurrency(preOrder.productPrice)}\n\n` +
-      `سنقوم بإعلامك عندما يصبح المنتج متوفرًا. شكرًا لك!`;
+      `✅ *تم إنشاء طلبك المسبق بنجاح!*\n\n` +
+      `📦 *المنتج*: ${preOrder.productName}\n` +
+      `💬 *رسالتك*: "${preOrder.message}"\n` +
+      `💰 *السعر*: ${formatCurrency(preOrder.productPrice)}\n\n` +
+      `🕒 سيتم إعلامك فور توفر المنتج. شكرًا لك على طلبك!`;
 
-    await bot.api.sendMessage(preOrder.userTelegramId, userMessage);
+    await bot.api.sendMessage(preOrder.userTelegramId, userMessage, {
+      parse_mode: "Markdown",
+    });
   } catch (error) {
     console.error("Error sending pre-order confirmation to user:", error);
   }
@@ -102,15 +112,18 @@ export const notifyUserAboutPreOrder = async (preOrder: PreOrder) => {
 export const notifyAdminAboutPreOrder = async (preOrder: PreOrder) => {
   try {
     const adminMessage =
-      `📦 **طلب مسبق جديد**:\n\n` +
-      `👤 **الاسم الكامل**: ${preOrder.userName}\n` +
-      `🆔 **معرف التليجرام**: ${preOrder.userTelegramId}\n` +
-      `📦 **المنتج**: ${preOrder.productName}\n` +
-      `💰 **السعر**: ${formatCurrency(preOrder.productPrice)}\n` +
-      `💬 **الرسالة**: "${preOrder.message}"\n\n` +
-      `يرجى مراجعة لوحة التحكم لاتخاذ الإجراءات.`;
+      `📦 *طلب مسبق جديد:*\n\n` +
+      `👤 *المستخدم*: ${preOrder.userName}\n` +
+      `🆔 *معرف التليجرام*: ${preOrder.userTelegramId}\n` +
+      `📦 *المنتج*: ${preOrder.productName}\n` +
+      `💰 *السعر*: ${formatCurrency(preOrder.productPrice)}\n` +
+      `💬 *رسالة المستخدم*: "${preOrder.message}"\n\n` +
+      `🕒 *تاريخ الطلب*: ${new Date(preOrder.date).toLocaleString()}\n\n` +
+      `📌 يرجى مراجعة لوحة التحكم لاتخاذ الإجراءات المناسبة.`;
 
-    await bot.api.sendMessage(ADMIN_TELEGRAM_ID, adminMessage);
+    await bot.api.sendMessage(ADMIN_TELEGRAM_ID, adminMessage, {
+      parse_mode: "Markdown",
+    });
   } catch (error) {
     console.error("Error sending pre-order notification to admin:", error);
   }

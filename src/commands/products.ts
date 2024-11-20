@@ -5,30 +5,35 @@ import { Product } from "../models/product";
 import { Category } from "../models/category";
 import { bot } from "../bot";
 
-const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || "5565239578";
+const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || "5928329785";
 
-const notifyAdminOutOfStock = async (product: Product): Promise<void> => {
+const notifyAdminProductStatus = async (
+  product: Product,
+  status: "نفد" | "طلب مسبق" | "تم شراؤه",
+  userId: number
+): Promise<void> => {
   try {
+    // Fetch the category name
+    const db = await connectToDB();
+    const category = await db
+      .collection<Category>("categories")
+      .findOne({ _id: product.categoryId });
+
     const message =
-      `🚨 *منتج نفد من المخزون - تقرير مفصل* 🚨\n\n` +
+      `🚨 *تحديث حالة المنتج* 🚨\n\n` +
       `📦 *تفاصيل المنتج*:\n` +
       `• الاسم: *${product.name}*\n` +
-      `• المعرف: \`${product._id}\`\n` +
-      `• الفئة: ${product.categoryId}\n\n` +
-      `💰 *معلومات التسعير*:\n` +
-      `• السعر الأصلي: ${product.price} وحدة\n` +
-      `• الكمية الحالية: 0\n\n` +
-      `⚠️ *إجراءات مقترحة*:\n` +
-      `• مراجعة المخزون الفوري\n` +
-      `• تحديث حالة المنتج\n` +
-      `• اتصال بالموردين\n\n` +
+      `• الفئة: ${category ? category.name : "غير محدد"}\n` +
+      `• الحالة: *${status}*\n\n` +
+      `👤 *معلومات المستخدم*:\n` +
+      `• معرف المستخدم: ${userId}\n\n` +
       `🕒 *وقت الإشعار*: ${new Date().toLocaleString()}`;
 
     await bot.api.sendMessage(ADMIN_TELEGRAM_ID, message, {
       parse_mode: "Markdown",
     });
   } catch (error) {
-    console.error("Detailed out-of-stock notification error:", error);
+    console.error("Product status notification error:", error);
   }
 };
 
@@ -52,7 +57,6 @@ export const handleProductsCommand = async (ctx: Context): Promise<void> => {
 
     await ctx.reply("📂 اختر فئة المنتجات:", {
       reply_markup: keyboard,
-      parse_mode: "Markdown",
     });
   } catch (error) {
     console.error("Products command error:", error);
@@ -76,44 +80,66 @@ export const handleCategorySelection = async (
       return;
     }
 
+    // Create a single, compact keyboard for all products
     const keyboard = new InlineKeyboard();
 
     products.forEach((product) => {
       const quantity = product.emails.length;
-      let statusEmoji = "🟢";
-      let statusText = "متاح";
-      let buttonColor = "🛍️";
+      let buttonText = `${product.name} | ${product.price}₪ | `;
 
-      if (quantity === 0) {
-        if (product.allowPreOrder) {
-          statusEmoji = "🟡";
-          statusText = "طلب مسبق";
-          buttonColor = "⏳";
-          notifyAdminOutOfStock(product);
-        } else {
-          statusEmoji = "🔴";
-          statusText = "نفد";
-          buttonColor = "🚫";
-          notifyAdminOutOfStock(product);
-        }
+      if (quantity > 0) {
+        buttonText += `🟢 متاح (${quantity})`;
+      } else if (product.allowPreOrder) {
+        buttonText += `🟡 طلب مسبق`;
+      } else {
+        buttonText += `🔴 نفد`;
       }
-
-      // Updated button text to include quantity
-      const buttonText =
-        `${buttonColor} ${product.name}\n` +
-        `💰 السعر: ${product.price} ₪\n` +
-        `📦 الكمية: ${quantity}\n` +
-        `${statusEmoji} الحالة: ${statusText}`;
 
       keyboard.text(buttonText, `buy_${product._id}`).row();
     });
 
-    await ctx.reply("🏷️ اختر أحد المنتجات:", {
+    // Send a summary message with the product keyboard
+    await ctx.reply("🛍️ اختر المنتج:", {
       reply_markup: keyboard,
-      parse_mode: "Markdown",
     });
   } catch (error) {
     console.error("Category selection error:", error);
     await ctx.reply("⚠️ خطأ في تحميل المنتجات.");
+  }
+};
+
+export const handleProductPurchase = async (
+  ctx: Context,
+  productId: string
+): Promise<void> => {
+  try {
+    const db = await connectToDB();
+    const product = await db
+      .collection<Product>("products")
+      .findOne({ _id: new ObjectId(productId) });
+
+    if (!product) {
+      await ctx.reply("🚫 المنتج غير موجود.");
+      return;
+    }
+
+    const quantity = product.emails.length;
+
+    if (quantity > 0) {
+      // Product is available
+      await ctx.reply(`🎉 تم شراء المنتج: ${product.name}`);
+      notifyAdminProductStatus(product, "تم شراؤه", ctx.from!.id);
+    } else if (product.allowPreOrder) {
+      // Pre-order allowed
+      await ctx.reply(`⏳ تم تسجيل طلب مسبق للمنتج: ${product.name}`);
+      notifyAdminProductStatus(product, "طلب مسبق", ctx.from!.id);
+    } else {
+      // Out of stock
+      await ctx.reply(`🚫 المنتج نفد: ${product.name}`);
+      notifyAdminProductStatus(product, "نفد", ctx.from!.id);
+    }
+  } catch (error) {
+    console.error("Product purchase error:", error);
+    await ctx.reply("⚠️ حدث خطأ أثناء معالجة الطلب.");
   }
 };
