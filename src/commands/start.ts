@@ -4,7 +4,7 @@ import { User } from "../models/user";
 import { Keyboard } from "grammy";
 
 // Define admin Telegram ID from environment
-const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || 5565239578;
+const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || "5565239578";
 
 // Handle the "/start" command
 export const handleStartCommand = async (ctx: MyContext) => {
@@ -46,7 +46,7 @@ export const handleStartCommand = async (ctx: MyContext) => {
       // Notify admin of the new user
       await sendAdminNotification(ctx, user);
 
-      // Skip duplicate prompt, directly ask for full name
+      // Ask for full name
       ctx.session.awaitingFullName = true;
       await ctx.reply("🔤 يُرجى إدخال اسمك الكامل:");
       return;
@@ -64,9 +64,7 @@ export const handleStartCommand = async (ctx: MyContext) => {
         "🔒 شكرًا لتسجيلك. حسابك قيد المراجعة. يُرجى الانتظار حتى يتم قبوله."
       );
     } else {
-      await ctx.reply(
-        `مرحبًا ${user.fullName}! 👋\n\nشكرًا لاستخدامك البوت! 🎉`
-      );
+      await showMainMenu(ctx, user.fullName || "مستخدم");
     }
   } catch (error) {
     console.error("Error in handleStartCommand:", error);
@@ -145,5 +143,29 @@ const sendAdminNotification = async (ctx: MyContext, user: User) => {
     });
   } catch (error) {
     console.error("Error sending admin notification:", error);
+  }
+};
+
+// Show the main menu
+const showMainMenu = async (ctx: MyContext, name: string) => {
+  try {
+    const keyboard = new Keyboard()
+      .text("📊 عرض الرصيد")
+      .text("🛍️ عرض المنتجات")
+      .text("حسابي")
+      .row()
+      .text("📞 التواصل مع الدعم")
+      .resized();
+
+    await ctx.reply(`مرحبًا ${name}! 👋\n\nيمكنك الآن استخدام البوت. 🥳`, {
+      reply_markup: {
+        keyboard: keyboard.build(),
+        resize_keyboard: true,
+        one_time_keyboard: false,
+      },
+    });
+  } catch (error) {
+    console.error("Error in showMainMenu:", error);
+    await ctx.reply("❌ حدث خطأ أثناء عرض القائمة الرئيسية.");
   }
 };
