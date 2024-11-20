@@ -1,4 +1,3 @@
-// src/bot.ts
 import { Bot, Context, session, SessionFlavor } from "grammy";
 import dotenv from "dotenv";
 import {
@@ -20,8 +19,6 @@ import {
 } from "./commands/buy";
 import { handleAccountCommand } from "./commands/account";
 import { handleSupportCommand } from "./commands/support";
-import { connectToDB } from "./db";
-import { User } from "./models/user";
 import { startServer } from "./server";
 
 // Load environment variables
@@ -58,48 +55,6 @@ bot.use(
     }),
   })
 );
-
-// Middleware to check if user is accepted
-// src/bot.ts
-bot.use(async (ctx, next) => {
-  try {
-    if (ctx.from && ctx.message && ctx.message.text !== "/start") {
-      const telegramId = ctx.from.id.toString();
-      const db = await connectToDB();
-      const user = await db.collection<User>("users").findOne({ telegramId });
-
-      if (!user) {
-        await ctx.reply("يُرجى إرسال /start للتسجيل في البوت.");
-        return;
-      }
-
-      if (!user.isAccepted) {
-        await ctx.reply(
-          "يُرجى الانتظار حتى يقوم المسؤول بالموافقة على حسابك. 🔒"
-        );
-        return;
-      }
-
-      if (!user.fullName || !user.phoneNumber) {
-        if (!user.fullName) {
-          ctx.session.awaitingFullName = true;
-          await ctx.reply("🔤 يُرجى إدخال اسمك الكامل:");
-          return;
-        }
-
-        if (!user.phoneNumber) {
-          ctx.session.awaitingPhoneNumber = true;
-          await ctx.reply("📞 يُرجى إدخال رقم هاتفك:");
-          return;
-        }
-      }
-    }
-    await next();
-  } catch (error) {
-    console.error("Error in user middleware:", error);
-    await ctx.reply("حدث خطأ أثناء التحقق من المستخدم. يُرجى المحاولة لاحقًا.");
-  }
-});
 
 // Command Handlers
 bot.command("start", async (ctx) => handleStartCommand(ctx));
