@@ -22,6 +22,7 @@ export const handleStartCommand = async (ctx: MyContext) => {
     const db = await connectToDB();
     const userCollection = db.collection<User>("users");
 
+    // Check if the user exists in the database
     let user = await userCollection.findOne({ telegramId });
 
     if (!user) {
@@ -45,19 +46,19 @@ export const handleStartCommand = async (ctx: MyContext) => {
       // Notify admin of the new user
       await sendAdminNotification(ctx, user);
 
-      // Ask for full name
-      await ctx.reply("مرحبًا بك! 😊\n\nيرجى إدخال اسمك الكامل:");
+      // Skip duplicate prompt, directly ask for full name
       ctx.session.awaitingFullName = true;
+      await ctx.reply("🔤 يُرجى إدخال اسمك الكامل:");
       return;
     }
 
-    // Existing user
+    // Handle existing users
     if (!user.fullName) {
-      await ctx.reply("🔤 يُرجى إدخال اسمك الكامل:");
       ctx.session.awaitingFullName = true;
+      await ctx.reply("🔤 يُرجى إدخال اسمك الكامل:");
     } else if (!user.phoneNumber) {
-      await ctx.reply("📞 يُرجى إدخال رقم هاتفك:");
       ctx.session.awaitingPhoneNumber = true;
+      await ctx.reply("📞 يُرجى إدخال رقم هاتفك:");
     } else if (!user.isAccepted) {
       await ctx.reply(
         "🔒 شكرًا لتسجيلك. حسابك قيد المراجعة. يُرجى الانتظار حتى يتم قبوله."
@@ -91,10 +92,10 @@ export const handleFullNameInput = async (ctx: MyContext): Promise<void> => {
       .updateOne({ telegramId }, { $set: { fullName } });
 
     ctx.session.awaitingFullName = false;
+    ctx.session.awaitingPhoneNumber = true;
     await ctx.reply(
       "✅ تم حفظ اسمك الكامل بنجاح.\n\n📞 يُرجى الآن إدخال رقم هاتفك:"
     );
-    ctx.session.awaitingPhoneNumber = true;
   } catch (error) {
     console.error("Error in handleFullNameInput:", error);
     await ctx.reply("❌ حدث خطأ أثناء حفظ اسمك الكامل. يُرجى المحاولة لاحقًا.");
@@ -139,7 +140,6 @@ const sendAdminNotification = async (ctx: MyContext, user: User) => {
       `🔹 **تاريخ التسجيل**: ${new Date().toLocaleString()}\n\n` +
       `يرجى مراجعة حساب المستخدم والقبول أو الرفض.`;
 
-    // Send to admin
     await ctx.api.sendMessage(ADMIN_TELEGRAM_ID, message, {
       parse_mode: "Markdown",
     });
