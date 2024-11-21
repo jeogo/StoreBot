@@ -4,7 +4,7 @@ import { User } from "../models/user";
 import { Keyboard } from "grammy";
 
 // Define admin Telegram ID from environment
-const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || "5565239578";
+const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || "5928329785";
 
 // Handle the "/start" command
 export const handleStartCommand = async (ctx: MyContext) => {

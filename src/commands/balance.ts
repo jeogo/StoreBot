@@ -1,8 +1,8 @@
+import { UserMessages } from "./../utils/messages";
 // src/commands/balance.ts
 import { Context } from "grammy";
 import { connectToDB } from "../db";
 import { User } from "../models/user"; // Import User interface
-import { formatBalanceMessage } from "../utils/messages";
 
 export const handleBalanceCommand = async (ctx: Context): Promise<void> => {
   try {
@@ -18,7 +18,7 @@ export const handleBalanceCommand = async (ctx: Context): Promise<void> => {
     }
 
     const balance = user.balance || 0;
-    ctx.reply(formatBalanceMessage(balance));
+    ctx.reply(UserMessages.formatBalanceMessage(balance));
   } catch (error) {
     console.error("Error in handleBalanceCommand:", error);
     ctx.reply(

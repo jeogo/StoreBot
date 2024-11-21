@@ -5,9 +5,9 @@ import { PreOrder } from "../models/preorder";
 import { HistoryEntry } from "../models/history";
 import { User } from "../models/user";
 import { Product } from "../models/product";
+import { AdminMessages, UserMessages, ErrorMessages } from "../utils/messages";
 
-const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || "5565239578";
-const formatCurrency = (amount: number): string => `${amount.toFixed(2)}₪`;
+const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || "5928329785";
 
 /**
  * Creates a pre-order in the database.
@@ -25,10 +25,16 @@ export const createPreOrderInDB = async (
     .collection<Product>("products")
     .findOne({ _id: productId });
 
-  if (!user || !product) return null;
+  if (!user || !product) {
+    throw new Error(
+      !user ? ErrorMessages.userNotFound() : ErrorMessages.productNotFound()
+    );
+  }
 
   if (user.balance < product.price) {
-    throw new Error("Insufficient balance for pre-order.");
+    throw new Error(
+      UserMessages.formatInsufficientFundsMessage(user.balance, product.price)
+    );
   }
 
   // Deduct product price from user's balance
@@ -74,7 +80,11 @@ const logPreOrderHistory = async (preOrder: PreOrder) => {
       type: "user",
       id: preOrder.userId.toHexString(),
     },
-    details: `User '${preOrder.userName}' created a pre-order for product '${preOrder.productName}'`,
+    details: AdminMessages.notifyAdminPreOrder(
+      preOrder.userName,
+      preOrder.productName,
+      preOrder.message
+    ),
     metadata: {
       userId: preOrder.userId,
       productId: preOrder.productId,
@@ -91,13 +101,7 @@ const logPreOrderHistory = async (preOrder: PreOrder) => {
  */
 export const notifyUserAboutPreOrder = async (preOrder: PreOrder) => {
   try {
-    const userMessage =
-      `✅ *تم إنشاء طلبك المسبق بنجاح!*\n\n` +
-      `📦 *المنتج*: ${preOrder.productName}\n` +
-      `💬 *رسالتك*: "${preOrder.message}"\n` +
-      `💰 *السعر*: ${formatCurrency(preOrder.productPrice)}\n\n` +
-      `🕒 سيتم إعلامك فور توفر المنتج. شكرًا لك على طلبك!`;
-
+    const userMessage = UserMessages.preorderSuccess();
     await bot.api.sendMessage(preOrder.userTelegramId, userMessage, {
       parse_mode: "Markdown",
     });
@@ -111,15 +115,11 @@ export const notifyUserAboutPreOrder = async (preOrder: PreOrder) => {
  */
 export const notifyAdminAboutPreOrder = async (preOrder: PreOrder) => {
   try {
-    const adminMessage =
-      `📦 *طلب مسبق جديد:*\n\n` +
-      `👤 *المستخدم*: ${preOrder.userName}\n` +
-      `🆔 *معرف التليجرام*: ${preOrder.userTelegramId}\n` +
-      `📦 *المنتج*: ${preOrder.productName}\n` +
-      `💰 *السعر*: ${formatCurrency(preOrder.productPrice)}\n` +
-      `💬 *رسالة المستخدم*: "${preOrder.message}"\n\n` +
-      `🕒 *تاريخ الطلب*: ${new Date(preOrder.date).toLocaleString()}\n\n` +
-      `📌 يرجى مراجعة لوحة التحكم لاتخاذ الإجراءات المناسبة.`;
+    const adminMessage = AdminMessages.notifyAdminPreOrder(
+      preOrder.userName,
+      preOrder.productName,
+      preOrder.message
+    );
 
     await bot.api.sendMessage(ADMIN_TELEGRAM_ID, adminMessage, {
       parse_mode: "Markdown",

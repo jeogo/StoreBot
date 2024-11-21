@@ -13,7 +13,6 @@ const notifyAdminProductStatus = async (
   userId: number
 ): Promise<void> => {
   try {
-    // Fetch the category name
     const db = await connectToDB();
     const category = await db
       .collection<Category>("categories")
@@ -37,6 +36,7 @@ const notifyAdminProductStatus = async (
   }
 };
 
+// Handle the "/products" Command
 export const handleProductsCommand = async (ctx: Context): Promise<void> => {
   try {
     const db = await connectToDB();
@@ -64,6 +64,7 @@ export const handleProductsCommand = async (ctx: Context): Promise<void> => {
   }
 };
 
+// Handle Category Selection
 export const handleCategorySelection = async (
   ctx: Context,
   categoryId: string
@@ -80,9 +81,7 @@ export const handleCategorySelection = async (
       return;
     }
 
-    // Create a single, compact keyboard for all products
     const keyboard = new InlineKeyboard();
-
     products.forEach((product) => {
       const quantity = product.emails.length;
       let buttonText = `${product.name} | ${product.price}₪ | `;
@@ -98,7 +97,6 @@ export const handleCategorySelection = async (
       keyboard.text(buttonText, `buy_${product._id}`).row();
     });
 
-    // Send a summary message with the product keyboard
     await ctx.reply("🛍️ اختر المنتج:", {
       reply_markup: keyboard,
     });
@@ -108,6 +106,7 @@ export const handleCategorySelection = async (
   }
 };
 
+// Handle Product Purchase
 export const handleProductPurchase = async (
   ctx: Context,
   productId: string
@@ -127,14 +126,17 @@ export const handleProductPurchase = async (
 
     if (quantity > 0) {
       // Product is available
-      await ctx.reply(`🎉 تم شراء المنتج: ${product.name}`);
+      const email = product.emails.pop(); // Take the first available email
+      await ctx.reply(
+        `🎉 تم شراء المنتج: ${product.name}\n📧 البريد الإلكتروني: ${email}`
+      );
       notifyAdminProductStatus(product, "تم شراؤه", ctx.from!.id);
     } else if (product.allowPreOrder) {
       // Pre-order allowed
       await ctx.reply(`⏳ تم تسجيل طلب مسبق للمنتج: ${product.name}`);
       notifyAdminProductStatus(product, "طلب مسبق", ctx.from!.id);
     } else {
-      // Out of stock
+      // Product out of stock
       await ctx.reply(`🚫 المنتج نفد: ${product.name}`);
       notifyAdminProductStatus(product, "نفد", ctx.from!.id);
     }

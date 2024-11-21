@@ -1,4 +1,3 @@
-// src/controllers/productController.ts
 import { Request, Response } from "express";
 import { ObjectId } from "mongodb";
 import { connectToDB } from "../db";
@@ -26,7 +25,9 @@ export const getProductById = async (req: Request, res: Response) => {
     const product = await db
       .collection<Product>("products")
       .findOne({ _id: productId });
+
     if (!product) return res.status(404).json({ error: "Product not found" });
+
     res.status(200).json(product);
   } catch (error) {
     console.error("Error fetching product:", error);
@@ -46,6 +47,14 @@ export const createProduct = async (req: Request, res: Response) => {
       categoryId,
       password = "default_password",
       allowPreOrder = false,
+    }: {
+      name?: string;
+      description?: string;
+      price: number;
+      emails: string[]; // Ensure emails is of type string[]
+      categoryId: string;
+      password?: string;
+      allowPreOrder?: boolean;
     } = req.body;
 
     if (!price || !categoryId) {
@@ -54,23 +63,39 @@ export const createProduct = async (req: Request, res: Response) => {
         .json({ error: "Price and categoryId are required" });
     }
 
-    // Check if the category exists
+    // Validate categoryId format and check if category exists
+    if (!ObjectId.isValid(categoryId)) {
+      return res.status(400).json({ error: "Invalid category ID format" });
+    }
+
     const category = await db
       .collection<Category>("categories")
       .findOne({ _id: new ObjectId(categoryId) });
+
     if (!category)
       return res.status(400).json({ error: "Invalid category ID" });
+
+    // Ensure emails are unique and valid
+    const uniqueEmails = [...new Set(emails)];
+    const invalidEmails = uniqueEmails.filter(
+      (email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    );
+
+    if (invalidEmails.length > 0) {
+      return res.status(400).json({ error: "Invalid email(s) found" });
+    }
 
     const newProduct: Product = {
       name,
       description,
       price,
-      emails: emails.length > 0 ? emails : [],
+      emails: uniqueEmails.length > 0 ? uniqueEmails : [],
       categoryId: new ObjectId(categoryId),
       allowPreOrder,
-      isAvailable: emails.length > 0,
+      isAvailable: uniqueEmails.length > 0,
       createdDate: new Date(),
     };
+
     const result = await db
       .collection<Product>("products")
       .insertOne(newProduct);
@@ -114,46 +139,67 @@ export const updateProductById = async (req: Request, res: Response) => {
       name,
       description,
       price,
-      emails,
+      emails = [],
       categoryId,
       password,
       allowPreOrder,
+    }: {
+      name?: string;
+      description?: string;
+      price?: number;
+      emails: string[]; // Ensure emails is of type string[]
+      categoryId?: string;
+      password?: string;
+      allowPreOrder?: boolean;
     } = req.body;
 
-    // Find the existing product to retrieve current values
+    // Check if product exists
     const existingProduct = await db
       .collection<Product>("products")
       .findOne({ _id: productId });
+
     if (!existingProduct)
       return res.status(404).json({ error: "Product not found" });
 
-    // Validate the category ID format and check if the category exists
+    // Validate and check if category exists if categoryId is provided
     if (categoryId && !ObjectId.isValid(categoryId)) {
       return res.status(400).json({ error: "Invalid category ID format" });
     }
+
     if (categoryId) {
       const categoryExists = await db
         .collection<Category>("categories")
         .findOne({ _id: new ObjectId(categoryId) });
+
       if (!categoryExists)
         return res.status(400).json({ error: "Category not found" });
     }
 
-    // Prepare the updated fields
+    // Validate emails format
+    const updatedEmails = emails
+      ? [...new Set(emails)]
+      : existingProduct.emails;
+    const invalidEmails = updatedEmails.filter(
+      (email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    );
+
+    if (invalidEmails.length > 0) {
+      return res.status(400).json({ error: "Invalid email(s) found" });
+    }
+
     const updatedFields: Partial<Product> = {
       name: name ?? existingProduct.name,
       description: description ?? existingProduct.description,
       price: price ?? existingProduct.price,
-      emails: emails ?? existingProduct.emails,
+      emails: updatedEmails,
       allowPreOrder: allowPreOrder ?? existingProduct.allowPreOrder,
-      isAvailable: emails ? emails.length > 0 : existingProduct.isAvailable,
+      isAvailable: updatedEmails.length > 0,
     };
 
     if (categoryId) {
       updatedFields.categoryId = new ObjectId(categoryId);
     }
 
-    // Update the product
     const result = await db.collection<Product>("products").updateOne(
       { _id: productId },
       {
@@ -161,7 +207,7 @@ export const updateProductById = async (req: Request, res: Response) => {
       }
     );
 
-    // Log the update in the centralized history collection
+    // Log the update in the history collection
     const historyEntry: HistoryEntry = {
       entity: "product",
       entityId: productId,
@@ -196,10 +242,11 @@ export const deleteProductById = async (req: Request, res: Response) => {
     const db = await connectToDB();
     const productId = new ObjectId(req.params.id);
 
-    // Find the existing product to retrieve current values
+    // Find the existing product
     const existingProduct = await db
       .collection<Product>("products")
       .findOne({ _id: productId });
+
     if (!existingProduct)
       return res.status(404).json({ error: "Product not found" });
 
@@ -207,11 +254,12 @@ export const deleteProductById = async (req: Request, res: Response) => {
     const result = await db
       .collection<Product>("products")
       .deleteOne({ _id: productId });
+
     if (result.deletedCount === 0) {
       return res.status(404).json({ error: "Product not found" });
     }
 
-    // Log the deletion in the centralized history collection
+    // Log the deletion in the history collection
     const historyEntry: HistoryEntry = {
       entity: "product",
       entityId: productId,

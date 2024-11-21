@@ -10,7 +10,7 @@ import {
   notifyAdminAboutPreOrder,
 } from "./preorder";
 
-const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || "5565239578";
+const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || "5928329785";
 const formatCurrency = (amount: number): string => `${amount.toFixed(2)}₪`;
 
 interface SessionData {
