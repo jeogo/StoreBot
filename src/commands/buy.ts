@@ -159,8 +159,8 @@ export const handleBuyConfirmation = async (
     );
 
     const adminDetails = `
-👤 *المستخدم*: ${user.telegramId}
-👤 *المعرف*: ${user.fullName}
+    👤 *المستخدم*:${user.fullName}
+    👤 *المعرف*: ${user.telegramId}
 📦 *المنتج*: ${product.name}  
 📉 *الكمية المتبقية*: ${product.emails.length}  
 💰 *السعر*: ${formatCurrency(product.price)}`;
