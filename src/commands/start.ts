@@ -2,9 +2,10 @@ import { MyContext } from "../types";
 import { connectToDB } from "../db";
 import { User } from "../models/user";
 import { Keyboard } from "grammy";
+import { NewUserMessage } from "../utils/messages";
 
 // Define admin Telegram ID from environment
-const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || "5928329785";
+const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || "5565239578";
 
 // Handle the "/start" command
 export const handleStartCommand = async (ctx: MyContext) => {
@@ -13,6 +14,7 @@ export const handleStartCommand = async (ctx: MyContext) => {
     const chatId = ctx.chat?.id.toString();
     const username = ctx.from?.username || "مستخدم غير معروف";
     const name = ctx.from?.first_name || "مستخدم";
+    console.log(ctx.from?.id);
     if (!telegramId || !chatId) {
       console.warn("Missing telegramId or chatId.");
       return;
@@ -129,13 +131,7 @@ export const handlePhoneNumberInput = async (ctx: MyContext): Promise<void> => {
 // Notify admin of a new user
 const sendAdminNotification = async (ctx: MyContext, user: User) => {
   try {
-    const message =
-      `👤 **مستخدم جديد قام بالتسجيل**:\n\n` +
-      `🔹 **الاسم**: ${user.name}\n` +
-      `🔹 **اسم المستخدم**: @${user.username || "غير متوفر"}\n` +
-      `🔹 **معرف تيليجرام**: ${user.telegramId}\n` +
-      `🔹 **تاريخ التسجيل**: ${new Date().toLocaleString()}\n\n` +
-      `يرجى مراجعة حساب المستخدم والقبول أو الرفض.`;
+    const message = NewUserMessage(user);
 
     await ctx.api.sendMessage(ADMIN_TELEGRAM_ID, message, {
       parse_mode: "Markdown",
@@ -157,13 +153,16 @@ const showMainMenu = async (ctx: MyContext, name: string) => {
       .text("تحديث")
       .resized();
 
-    await ctx.reply(`مرحبًا ${name}! 👋\n\nيمكنك الآن استخدام البوت. 🥳 \n\nتم تحديث البوت بنجاح استمتع بالممزيات الجديدة`, {
-      reply_markup: {
-        keyboard: keyboard.build(),
-        resize_keyboard: true,
-        one_time_keyboard: false,
-      },
-    });
+    await ctx.reply(
+      `مرحبًا ${name}! 👋\n\nيمكنك الآن استخدام البوت. 🥳 \n\nتم تحديث البوت بنجاح استمتع بالممزيات الجديدة`,
+      {
+        reply_markup: {
+          keyboard: keyboard.build(),
+          resize_keyboard: true,
+          one_time_keyboard: false,
+        },
+      }
+    );
   } catch (error) {
     console.error("Error in showMainMenu:", error);
     await ctx.reply("❌ حدث خطأ أثناء عرض القائمة الرئيسية.");
