@@ -1,6 +1,5 @@
 // src/commands/account.ts
 
-import { InlineKeyboard } from "grammy";
 import { connectToDB } from "../db";
 import { User } from "../models/user";
 

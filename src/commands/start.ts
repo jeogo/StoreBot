@@ -13,7 +13,6 @@ export const handleStartCommand = async (ctx: MyContext) => {
     const chatId = ctx.chat?.id.toString();
     const username = ctx.from?.username || "مستخدم غير معروف";
     const name = ctx.from?.first_name || "مستخدم";
-
     if (!telegramId || !chatId) {
       console.warn("Missing telegramId or chatId.");
       return;
@@ -27,7 +26,7 @@ export const handleStartCommand = async (ctx: MyContext) => {
 
     if (!user) {
       // Register a new user
-      const newUser: User = {
+      const newUser: User = await {
         telegramId,
         chatId,
         username,
@@ -155,9 +154,10 @@ const showMainMenu = async (ctx: MyContext, name: string) => {
       .text("حسابي")
       .row()
       .text("📞 التواصل مع الدعم")
+      .text("تحديث")
       .resized();
 
-    await ctx.reply(`مرحبًا ${name}! 👋\n\nيمكنك الآن استخدام البوت. 🥳`, {
+    await ctx.reply(`مرحبًا ${name}! 👋\n\nيمكنك الآن استخدام البوت. 🥳 \n\nتم تحديث البوت بنجاح استمتع بالممزيات الجديدة`, {
       reply_markup: {
         keyboard: keyboard.build(),
         resize_keyboard: true,

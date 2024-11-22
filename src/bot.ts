@@ -56,6 +56,7 @@ bot.use(
 
 // Command Handlers
 bot.command("start", async (ctx) => handleStartCommand(ctx));
+bot.hears("تحديث", async (ctx) => handleStartCommand(ctx));
 bot.hears("📊 عرض الرصيد", async (ctx) => handleBalanceCommand(ctx));
 bot.hears("🛍️ عرض المنتجات", async (ctx) => handleProductsCommand(ctx));
 bot.hears("📞 التواصل مع الدعم", async (ctx) => handleSupportCommand(ctx));
