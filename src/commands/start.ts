@@ -5,7 +5,7 @@ import { Keyboard } from "grammy";
 import { NewUserMessage } from "../utils/messages";
 
 // Define admin Telegram ID from environment
-const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || "5565239578";
+const ADMIN_TELEGRAM_ID = process.env.TELEGRAM_ADMIN_ID || "5565239578";
 
 // Handle the "/start" command
 export const handleStartCommand = async (ctx: MyContext) => {

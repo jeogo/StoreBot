@@ -7,7 +7,7 @@ import { User } from "../models/user";
 import { Product } from "../models/product";
 import { AdminMessages, UserMessages, ErrorMessages } from "../utils/messages";
 
-const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || "5928329785";
+const ADMIN_TELEGRAM_ID = process.env.TELEGRAM_ADMIN_ID || "5565239578";
 
 /**
  * Creates a pre-order in the database.
@@ -19,17 +19,14 @@ export const createPreOrderInDB = async (
 ): Promise<PreOrder | null> => {
   const db = await connectToDB();
 
-  // Fetch the user and product
+  // Fetch user and product
   const user = await db.collection<User>("users").findOne({ _id: userId });
   const product = await db
     .collection<Product>("products")
     .findOne({ _id: productId });
 
-  if (!user || !product) {
-    throw new Error(
-      !user ? ErrorMessages.userNotFound() : ErrorMessages.productNotFound()
-    );
-  }
+  if (!user) throw new Error(ErrorMessages.userNotFound());
+  if (!product) throw new Error(ErrorMessages.productNotFound());
 
   if (user.balance < product.price) {
     throw new Error(
@@ -37,13 +34,12 @@ export const createPreOrderInDB = async (
     );
   }
 
-  // Deduct product price from user's balance
+  // Deduct balance and log history
   const newBalance = user.balance - product.price;
   await db
     .collection<User>("users")
     .updateOne({ _id: userId }, { $set: { balance: newBalance } });
 
-  // Create a pre-order
   const newPreOrder: PreOrder = {
     _id: new ObjectId(),
     userId,
@@ -51,6 +47,7 @@ export const createPreOrderInDB = async (
     date: new Date(),
     status: "pending",
     message,
+    fullName: user.fullName || "غير متوفر", // Add full name
     userName: user.username,
     userTelegramId: user.telegramId,
     productName: product.name,
@@ -58,8 +55,6 @@ export const createPreOrderInDB = async (
   };
 
   await db.collection<PreOrder>("preorders").insertOne(newPreOrder);
-
-  // Log the pre-order in history
   await logPreOrderHistory(newPreOrder);
 
   return newPreOrder;
@@ -81,6 +76,7 @@ const logPreOrderHistory = async (preOrder: PreOrder) => {
       id: preOrder.userId.toHexString(),
     },
     details: AdminMessages.notifyAdminPreOrder(
+      preOrder.fullName,
       preOrder.userName,
       preOrder.productName,
       preOrder.message
@@ -101,7 +97,7 @@ const logPreOrderHistory = async (preOrder: PreOrder) => {
  */
 export const notifyUserAboutPreOrder = async (preOrder: PreOrder) => {
   try {
-    const userMessage = UserMessages.preorderSuccess();
+    const userMessage = UserMessages.preorderSuccess(preOrder.productName);
     await bot.api.sendMessage(preOrder.userTelegramId, userMessage, {
       parse_mode: "Markdown",
     });
@@ -116,6 +112,7 @@ export const notifyUserAboutPreOrder = async (preOrder: PreOrder) => {
 export const notifyAdminAboutPreOrder = async (preOrder: PreOrder) => {
   try {
     const adminMessage = AdminMessages.notifyAdminPreOrder(
+      preOrder.fullName,
       preOrder.userName,
       preOrder.productName,
       preOrder.message

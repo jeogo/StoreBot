@@ -5,7 +5,7 @@ import { Product } from "../models/product";
 import { Category } from "../models/category";
 import { bot } from "../bot";
 
-const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || "5928329785";
+const ADMIN_TELEGRAM_ID = process.env.TELEGRAM_ADMIN_ID || "5928329785";
 
 const notifyAdminProductStatus = async (
   product: Product,

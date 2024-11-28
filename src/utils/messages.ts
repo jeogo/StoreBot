@@ -1,92 +1,101 @@
+/** Currency Formatter */
 export const formatCurrency = (amount: number): string =>
   `${amount.toFixed(2)}₪`;
 
-/** Admin-related messages */
 export const AdminMessages = {
-  notifyAdminPurchase: (
-    user: string,
-    product: string,
-    remaining: number,
-    price: string
-  ): string => `
-👤 *المستخدم*: ${user}  
-📦 *المنتج*: ${product}  
-📉 *الكمية المتبقية*: ${remaining}  
-💰 *السعر*: ${price}`,
   notifyAdminPreOrder: (
-    user: string,
+    fullName: string,
+    userName: string,
     product: string,
     message: string
   ): string => `
-👤 *المستخدم*: ${user}  
+📬 *طلب مسبق جديد*:  
+👤 *الاسم الكامل*: ${fullName}  
+🔹 *اسم المستخدم*: ${userName}  
 📦 *المنتج*: ${product}  
-📄 *ملاحظات الطلب المسبق*: ${message}`,
+📄 *ملاحظات المستخدم*: ${message}`,
 };
 
-/** User-related messages */
 export const UserMessages = {
-  formatBalanceMessage: (balance: number): string =>
-    `رصيدك الحالي هو: ${balance} وحدة.`,
-  formatInsufficientFundsMessage: (balance: number, price: number): string =>
-    `رصيدك غير كافٍ. تحتاج إلى ${price - balance} وحدة إضافية لإتمام الشراء.`,
-  formatOutOfStockMessage: (): string => `عذرًا، هذا المنتج غير متوفر حاليًا.`,
   formatPurchaseMessage: (
+    fullName: string,
+    userName: string,
     productName: string,
     price: number,
     newBalance: number,
     email: string
   ): string =>
-    `تم شراء ${productName} مقابل ${price} وحدة. رصيدك المتبقي: ${newBalance} وحدة. الحساب الذي اشتريته هو: ${email}`,
-  confirmPurchase: (productName: string, price: string): string =>
-    `هل ترغب في شراء المنتج "${productName}" بسعر ${price}؟`,
-  productUnavailable: (productName: string): string =>
-    `المنتج "${productName}" غير متوفر حاليًا. هل ترغب في طلبه مسبقًا؟`,
-  sessionExpired: (): string =>
-    `⏳ انتهى وقت التأكيد. يُرجى إعادة المحاولة إذا كنت لا تزال ترغب في الشراء.`,
-  preorderPrompt: (): string => `يرجى كتابة ملاحظة أو رسالة خاصة للطلب المسبق:`,
-  preorderSuccess: (): string => `✅ تم إرسال الطلب المسبق بنجاح.`,
-  cancelSuccess: (): string => `❌ تم إلغاء العملية.`,
-  insufficientBalanceForPreorder: (): string =>
-    `❌ ليس لديك رصيد كافٍ لإتمام الطلب المسبق.`,
+    `✅ *تم الشراء بنجاح*:  
+👤 *الاسم الكامل*: ${fullName}  
+🔹 *اسم المستخدم*: ${userName}  
+📦 *المنتج*: ${productName}  
+💰 *السعر*: ${price} وحدة  
+💳 *الرصيد المتبقي*: ${newBalance} وحدة  
+📧 *الحساب*: ${email}`,
+
+  formatInsufficientFundsMessage: (balance: number, price: number): string =>
+    `رصيدك غير كافٍ. تحتاج إلى ${price - balance} وحدة إضافية لإتمام الشراء.`,
+
+  preorderSuccess: (productName: string): string =>
+    `✅ تم تقديم طلبك المسبق للمنتج "${productName}" بنجاح!`,
 };
 
-/** Error-related messages */
+/** Error Messages */
 export const ErrorMessages = {
-  userNotFound: (): string => `❌ المستخدم غير موجود.`,
-  productNotFound: (): string => `❌ المنتج غير موجود.`,
-  genericError: (): string => `⚠️ حدث خطأ. يُرجى المحاولة مرة أخرى لاحقًا.`,
+  userNotFound: (): string => `❌ *المستخدم غير موجود.*`,
+  productNotFound: (): string => `❌ *المنتج غير موجود.*`,
+  genericError: (): string => `⚠️ *حدث خطأ. يُرجى المحاولة لاحقًا.*`,
   preorderError: (): string =>
-    `❌ حدث خطأ أثناء إنشاء الطلب المسبق. يُرجى المحاولة لاحقًا.`,
+    `❌ *حدث خطأ أثناء إنشاء الطلب المسبق. يُرجى المحاولة لاحقًا.*`,
 };
 
-/** Support messages */
+/** Support Messages */
 export const SupportMessages = {
   insufficientBalanceSupport: (): string =>
-    `رصيدك غير كافٍ لإتمام هذه العملية. يُرجى التواصل مع الدعم الفني لإعادة شحن رصيدك.`,
+    `⚠️ *رصيدك غير كافٍ لإتمام هذه العملية.* يمكنك التواصل مع الدعم لإعادة الشحن.`,
   contactSupportLink: (): string =>
-    `📞 تواصل عبر WhatsApp: https://wa.me/1234567890`,
+    `📞 *تواصل مع الدعم الفني عبر WhatsApp*: [اضغط هنا](https://wa.me/1234567890)`,
 };
-export const messages = {
-  productNotFound: "❌ المنتج غير موجود.",
-  userNotFound: "❌ المستخدم غير موجود.",
-  productUnavailable: "❌ المنتج غير متوفر في الوقت الحالي.",
-  insufficientBalance:
-    "رصيدك غير كافٍ لإتمام هذه العملية. يُرجى التواصل مع الدعم الفني لإعادة شحن رصيدك.",
-  purchaseSuccess: (name: string, email: string) =>
-    `🎉 تم شراء المنتج "${name}" بنجاح.\n📧 البريد الإلكتروني الخاص بك: ${email}`,
-  adminNotification: (
-    user: string,
-    product: string,
-    remaining: number,
-    price: string
-  ) =>
-    `👤 *المستخدم*: ${user}\n📦 *المنتج*: ${product}\n📉 *الكمية المتبقية*: ${remaining}\n💰 *السعر*: ${price}`,
-};
+export const telegramMessages = {
+  preOrderConfirmation: (productName: string, message: string) =>
+    `✅ تم تقديم طلبك المسبق للمنتج "${productName}" بنجاح!\n\n` +
+    `💬 الرسالة: "${message}"\n\n` +
+    `سنقوم بإخطارك فور توفر المنتج.`,
 
-  export const NewUserMessage = (user: any)  =>
-  `👤 **مستخدم جديد قام بالتسجيل**:\n\n` +
-  `🔹 **الاسم**: ${user.name}\n` +
-  `🔹 **اسم المستخدم**: @${user.username || "غير متوفر"}\n` +
-  `🔹 **معرف تيليجرام**: ${user.telegramId}\n` +
-  `🔹 **تاريخ التسجيل**: ${new Date().toLocaleString()}\n\n` +
-  `يرجى مراجعة حساب المستخدم والقبول أو الرفض.`;
+  adminPreOrderNotification: (
+    fullName: string | undefined,
+    userId: string,
+    productName: string,
+    price: number,
+    message: string
+  ) =>
+    `📦 تنبيه طلب مسبق جديد:\n\n` +
+    `👤 المستخدم: ${fullName} (المعرف: ${userId})\n` +
+    `📦 المنتج: ${productName}\n` +
+    `💰 السعر: ${price}\n` +
+    `💬 الرسالة: "${message}"\n\n` +
+    `يرجى مراجعة لوحة التحكم للتفاصيل.`,
+};
+// utils/messages.ts
+
+import { User } from "../models/user";
+
+export const NewUserMessage = (user: User): string => {
+  return `
+  **تم تسجيل مستخدم جديد**
+  - **اسم المستخدم:** ${user.username}
+  - **الاسم الكامل:** ${user.fullName || "غير مذكور"}
+  - **رقم الهاتف:** ${user.phoneNumber || "غير مذكور"}
+  - **رقم التليجرام:** ${user.telegramId}
+  - **رقم المحادثة:** ${user.chatId}
+  - **تاريخ التسجيل:** ${user.registerDate.toLocaleString()}
+  `;
+};
+// utils/messages.ts
+
+export const formatBalanceMessage = (balance: number): string => {
+  return `
+  **رصيدك الحالي:**
+  - **المبلغ المتاح:** ${balance} 
+  `;
+};

@@ -9,61 +9,6 @@ import { PreOrder } from "../models/preorder";
 
 const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || "5565239578";
 
-const formatCurrency = (amount: number): string => `${amount.toFixed(2)} وحدة`;
-// Telegram message templates in Arabic
-const telegramMessages = {
-  preOrderConfirmation: (productName: string, message: string) =>
-    `✅ تم تقديم طلبك المسبق للمنتج "${productName}" بنجاح!\n\n` +
-    `💬 الرسالة: "${message}"\n\n` +
-    `سنقوم بإخطارك فور توفر المنتج.`,
-
-  adminPreOrderNotification: (
-    username: string,
-    userId: string,
-    productName: string,
-    price: number,
-    message: string
-  ) =>
-    `📦 تنبيه طلب مسبق جديد:\n\n` +
-    `👤 المستخدم: ${username} (المعرف: ${userId})\n` +
-    `📦 المنتج: ${productName}\n` +
-    `💰 السعر: ${price}\n` +
-    `💬 الرسالة: "${message}"\n\n` +
-    `يرجى مراجعة لوحة التحكم للتفاصيل.`,
-
-  fulfillmentNotification: (
-    productName: string,
-    message: string,
-    credentials: string
-  ) =>
-    `🎉 تم تنفيذ طلبك المسبق للمنتج "${productName}"!\n\n` +
-    `💬 الرسالة: "${message}"\n\n` +
-    `📧 بيانات الاعتماد:\n${credentials}\n\n` +
-    `شكراً لصبرك!`,
-
-  cancellationNotification: (
-    productName: string,
-    message: string,
-    refundAmount: number
-  ) =>
-    `❌ تم إلغاء طلبك المسبق للمنتج "${productName}".\n\n` +
-    `💬 الرسالة: "${message}"\n\n` +
-    `تم إعادة مبلغ ${refundAmount} إلى رصيدك.`,
-
-  emailFulfillmentNotification: (
-    productName: string,
-    email: string,
-    message: string
-  ) =>
-    `🎉 أخبار سارة! تم تنفيذ طلبك المسبق للمنتج "${productName}".\n\n` +
-    `📧 البريد الإلكتروني المخصص: ${email}\n\n` +
-    `💬 رسالتك الأصلية: "${message}"\n\n` +
-    `شكراً لشرائك!`,
-};
-
-// Create a new pre-order
-// Ensure ADMIN_TELEGRAM_ID is valid
-
 // Update a pre-order's status
 export const updatePreOrderStatus = async (req: Request, res: Response) => {
   try {
@@ -107,21 +52,25 @@ export const updatePreOrderStatus = async (req: Request, res: Response) => {
           .json({ error: "Email and password are required for fulfillment." });
       }
 
-      // Update the fulfillment date and status
-      await db
-        .collection<PreOrder>("preorders")
-        .updateOne(
-          { _id: preOrderId },
-          { $set: { status, fulfillmentDate: new Date() } }
-        );
-
-      // Send fulfillment message with email and password via bot
-      const fulfillmentMessage = telegramMessages.fulfillmentNotification(
-        product.name,
-        preOrder.message,
-        emailPassword
+      // Update the pre-order with fulfillment details
+      await db.collection<PreOrder>("preorders").updateOne(
+        { _id: preOrderId },
+        {
+          $set: {
+            status,
+            fulfillmentDate: new Date(),
+            clientMessageData: emailPassword,
+          },
+        }
       );
-      await bot.api.sendMessage(user.telegramId, fulfillmentMessage);
+
+      // Notify the user about the fulfillment
+      const message =
+        `✅ طلبك للمنتج "${product.name}" قد تم تحقيقه بنجاح!\n\n` +
+        `📧 معلومات الطلب: ${emailPassword}\n` +
+        `💬 شكراً لتعاملك معنا!`;
+
+      await bot.api.sendMessage(user.telegramId, message);
     } else if (status === "canceled") {
       // Refund the user's balance
       const refundAmount = product.price;
@@ -129,18 +78,21 @@ export const updatePreOrderStatus = async (req: Request, res: Response) => {
         .collection<User>("users")
         .updateOne({ _id: user._id }, { $inc: { balance: refundAmount } });
 
-      // Update the status to canceled
+      // Update the pre-order status to canceled
       await db
         .collection<PreOrder>("preorders")
-        .updateOne({ _id: preOrderId }, { $set: { status } });
+        .updateOne(
+          { _id: preOrderId },
+          { $set: { status, clientMessageData: "" } }
+        );
 
-      // Send cancellation message via bot
-      const cancelMessage = telegramMessages.cancellationNotification(
-        product.name,
-        preOrder.message,
-        refundAmount
-      );
-      await bot.api.sendMessage(user.telegramId, cancelMessage);
+      // Notify the user about the cancellation
+      const message =
+        `❌ طلبك للمنتج "${product.name}" تم إلغاؤه.\n` +
+        `💰 تم إعادة المبلغ إلى حسابك (${refundAmount}).\n` +
+        `💬 نعتذر عن الإزعاج.`;
+
+      await bot.api.sendMessage(user.telegramId, message);
     }
 
     res.status(200).json({ message: "Pre-order status updated successfully" });
@@ -259,12 +211,8 @@ export const fulfillPreOrder = async (req: Request, res: Response) => {
 
     await db.collection<HistoryEntry>("history").insertOne(historyEntry);
 
-    // Notify the user via the bot
-    const fulfillmentMessage = telegramMessages.emailFulfillmentNotification(
-      product.name,
-      assignedEmail,
-      preOrder.message
-    );
+    // Notify the user via the bot (updated to only notify the user)
+    const fulfillmentMessage = `Your pre-order for the product "${product.name}" has been fulfilled. The assigned email is: ${assignedEmail}. Additional message: ${preOrder.message}`;
     await bot.api.sendMessage(user.telegramId, fulfillmentMessage);
 
     res
@@ -310,6 +258,7 @@ export const getAllPreOrders = async (_req: Request, res: Response) => {
             status: 1,
             message: 1,
             fulfillmentDate: 1,
+            clientMessageData: 1,
             userName: "$user.username",
             userTelegramId: "$user.telegramId",
             productName: "$product.name",
@@ -396,7 +345,7 @@ export const deletePreOrderById = async (req: Request, res: Response) => {
         type: "system", // Since there's no user performing this action
         id: null,
       },
-      details: `Pre-order deleted`,
+      details: `Pre-order with ${preOrderId} deleted`,
       metadata: {
         preOrderId,
         userId: preOrder.userId,
