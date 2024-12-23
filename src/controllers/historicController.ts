@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { connectToDB } from "../db";
-import { HistoryEntry } from "../models/history";
+import { ComprehensiveHistory } from "../models/comprehensiveHistory";
 import { ObjectId } from "mongodb";
 
 // Fetch all historic records
@@ -8,7 +8,7 @@ export const getAllHistoricEntries = async (req: Request, res: Response) => {
   try {
     const db = await connectToDB();
     const history = await db
-      .collection<HistoryEntry>("history")
+      .collection<ComprehensiveHistory>("history")
       .find()
       .toArray();
     res.status(200).json(history);
@@ -25,8 +25,10 @@ export const getEntityHistoricEntries = async (req: Request, res: Response) => {
     const { id, entity } = req.params;
 
     const historyEntries = await db
-      .collection<HistoryEntry>("history")
-      .find({ entityId: new ObjectId(id), entity })
+      .collection<ComprehensiveHistory>("history")
+      .find({
+        [`${entity}Id`]: new ObjectId(id),
+      })
       .toArray();
 
     if (historyEntries.length === 0) {
@@ -48,9 +50,11 @@ export const deleteHistoricEntryById = async (req: Request, res: Response) => {
     const db = await connectToDB();
     const { id } = req.params;
 
-    const result = await db.collection<HistoryEntry>("history").deleteOne({
-      _id: new ObjectId(id),
-    });
+    const result = await db
+      .collection<ComprehensiveHistory>("history")
+      .deleteOne({
+        _id: new ObjectId(id),
+      });
 
     if (result.deletedCount === 0) {
       return res.status(404).json({ error: "Historic entry not found" });

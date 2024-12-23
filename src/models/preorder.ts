@@ -6,12 +6,12 @@ export interface PreOrder {
   productId: ObjectId;
   date: Date;
   status: string;
-  message: string; // Original message, could be an internal note
-  clientMessage?: string;
-  clientMessageData?: string; // New field for the message sent to the client
+  message: string; // Original message from the user
+  clientMessage?: string; // Message you sent to the user
+  clientMessageData?: string; // Data/details included in the message sent
   fulfillmentDate?: Date;
   userName: string;
-  fullName: string;
+  fullName: string; // Full name of the user
   userTelegramId: string;
   productName: string;
   productPrice: number;

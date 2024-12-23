@@ -3,6 +3,7 @@ import { ObjectId } from "mongodb";
 import { connectToDB } from "../db";
 import { User } from "../models/user";
 import { Product } from "../models/product";
+import { Category } from "../models/category"; // Added Category model import
 import { bot } from "../bot";
 import {
   createPreOrderInDB,
@@ -22,6 +23,7 @@ type MyContext = Context & SessionFlavor<SessionData>;
 
 const confirmationTimeouts: { [key: string]: NodeJS.Timeout } = {};
 
+// Notify Admin Function
 const notifyAdmin = async (title: string, details: string): Promise<void> => {
   try {
     await bot.api.sendMessage(ADMIN_TELEGRAM_ID, `*${title}*\n\n${details}`, {
@@ -32,6 +34,43 @@ const notifyAdmin = async (title: string, details: string): Promise<void> => {
   }
 };
 
+// Save to History Function
+const saveToHistory = async (
+  actionType: string,
+  description: string,
+  user: User,
+  product?: Product,
+  additionalDetails?: Partial<any>
+): Promise<void> => {
+  const db = await connectToDB();
+
+  // Fetch category if product exists
+  let categoryName = "غير محدد";
+  if (product?.categoryId) {
+    const category = await db.collection<Category>("categories").findOne({
+      _id: new ObjectId(product.categoryId),
+    });
+    categoryName = category?.name || "غير محدد";
+  }
+
+  const historyRecord = {
+    userId: user._id,
+    actionType,
+    description,
+    date: new Date(),
+    productId: product?._id,
+    productName: product?.name,
+    price: product?.price,
+    categoryName, // Include category name in history
+    fullName: user.fullName || "Unknown", // Include full name
+    phoneNumber: user.phoneNumber || "Unknown", // Include phone number
+    ...additionalDetails,
+  };
+
+  await db.collection("history").insertOne(historyRecord);
+};
+
+// Support Message
 const sendSupportMessage = async (ctx: MyContext): Promise<void> => {
   const supportKeyboard = new InlineKeyboard().url(
     "📞 تواصل عبر WhatsApp",
@@ -44,6 +83,7 @@ const sendSupportMessage = async (ctx: MyContext): Promise<void> => {
   );
 };
 
+// Initiate Purchase Command
 export const initiateBuyCommand = async (
   ctx: MyContext,
   productId: string
@@ -108,6 +148,7 @@ export const initiateBuyCommand = async (
   }
 };
 
+// Confirm Purchase
 export const handleBuyConfirmation = async (
   ctx: MyContext,
   productId: string
@@ -132,18 +173,43 @@ export const handleBuyConfirmation = async (
       return;
     }
 
-    if (product.emails.length === 0) {
-      await ctx.reply("❌ المنتج غير متوفر في الوقت الحالي.");
-      return;
-    }
+    // Fetch category name
+    const category = await db.collection<Category>("categories").findOne({
+      _id: new ObjectId(product.categoryId),
+    });
+    const categoryName = category?.name || "غير محدد";
 
-    const email = product.emails.shift();
+    const email = product.emails.shift(); // Take the first available email
     const updatedBalance = user.balance - product.price;
 
-    await db
-      .collection<User>("users")
-      .updateOne({ telegramId }, { $set: { balance: updatedBalance } });
+    // Save purchase to history
+    const description = `تم شراء المنتج ${product.name} بسعر ${formatCurrency(
+      product.price
+    )}`;
+    await saveToHistory("purchase", description, user, product, {
+      emailSold: email,
+    });
 
+    // Update user balance and history
+    await db.collection<User>("users").updateOne(
+      { telegramId },
+      {
+        $set: { balance: updatedBalance },
+        $push: {
+          history: {
+            type: "purchase",
+            date: new Date(),
+            productId: product._id,
+            productName: product.name,
+            price: product.price,
+            categoryName, // Now part of the schema
+            emailSold: email,
+          },
+        },
+      }
+    );
+
+    // Update product details and sales history
     await db.collection<Product>("products").updateOne(
       { _id: new ObjectId(productId) },
       {
@@ -151,19 +217,34 @@ export const handleBuyConfirmation = async (
           emails: product.emails,
           isAvailable: product.emails.length > 0,
         },
+        $push: {
+          archive: {
+            emailPassword: email,
+            soldTo: new ObjectId(user._id),
+            soldAt: new Date(),
+            price: product.price,
+          },
+        },
       }
     );
 
+    // Notify user of successful purchase
     await ctx.reply(
       `🎉 تم شراء المنتج "${product.name}" بنجاح.\n📧 البريد الإلكتروني الخاص بك: ${email}`
     );
 
+    // Notify admin about the purchase
     const adminDetails = `
-    👤 *المستخدم*:${user.fullName}
-    👤 *المعرف*: ${user.telegramId}
-📦 *المنتج*: ${product.name}  
-📉 *الكمية المتبقية*: ${product.emails.length}  
-💰 *السعر*: ${formatCurrency(product.price)}`;
+      🛒 *عملية شراء جديدة*:
+      👤 *الاسم الكامل*: ${user.fullName || "غير محدد"}
+      📞 *رقم الهاتف*: ${user.phoneNumber || "غير محدد"}
+      👤 *المعرف*: ${user.telegramId}
+      📦 *المنتج*: ${product.name}
+      🗂 *التصنيف*: ${categoryName}
+      📧 *البريد الإلكتروني*: ${email}
+      📉 *الكمية المتبقية*: ${product.emails.length}  
+      💰 *السعر*: ${formatCurrency(product.price)}
+    `;
 
     await notifyAdmin("🛒 تنبيه عملية شراء", adminDetails);
   } catch (error) {

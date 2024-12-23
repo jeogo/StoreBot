@@ -1,13 +1,24 @@
 import { Request, Response } from "express";
 import { ObjectId } from "mongodb";
 import { connectToDB } from "../db";
-import { HistoryEntry } from "../models/history";
+import { History } from "../models/history"; // Import your history model
 import { Product } from "../models/product";
 import { User } from "../models/user";
-import { bot } from "../bot";
 import { PreOrder } from "../models/preorder";
+import { bot } from "../bot";
 
-const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || "5565239578";
+// Helper function to log history
+const logHistory = async (type: "client" | "admin", entry: any) => {
+  const db = await connectToDB();
+
+  const historyEntry: History = {
+    _id: new ObjectId(),
+    type,
+    entry,
+  };
+
+  await db.collection<History>("history").insertOne(historyEntry);
+};
 
 // Update a pre-order's status
 export const updatePreOrderStatus = async (req: Request, res: Response) => {
@@ -71,6 +82,24 @@ export const updatePreOrderStatus = async (req: Request, res: Response) => {
         `💬 شكراً لتعاملك معنا!`;
 
       await bot.api.sendMessage(user.telegramId, message);
+
+      // Log fulfillment in history
+      const fulfillmentHistoryEntry = {
+        action: "preorder",
+        date: new Date(),
+        userId: preOrder.userId,
+        fullName: preOrder.userName,
+        email: emailPassword,
+        productId: preOrder.productId,
+        productName: preOrder.productName,
+        price: preOrder.productPrice,
+        status: "fulfilled",
+        message: preOrder.message,
+        responseMessage: message,
+        fulfillmentDate: new Date(),
+      };
+
+      await logHistory("client", fulfillmentHistoryEntry);
     } else if (status === "canceled") {
       // Refund the user's balance
       const refundAmount = product.price;
@@ -93,6 +122,23 @@ export const updatePreOrderStatus = async (req: Request, res: Response) => {
         `💬 نعتذر عن الإزعاج.`;
 
       await bot.api.sendMessage(user.telegramId, message);
+
+      // Log cancellation in history
+      const cancellationHistoryEntry = {
+        action: "preorder",
+        date: new Date(),
+        userId: preOrder.userId,
+        fullName: preOrder.userName,
+        email: "",
+        productId: preOrder.productId,
+        productName: preOrder.productName,
+        price: preOrder.productPrice,
+        status: "canceled",
+        message: preOrder.message,
+        responseMessage: message,
+      };
+
+      await logHistory("client", cancellationHistoryEntry);
     }
 
     res.status(200).json({ message: "Pre-order status updated successfully" });
@@ -102,125 +148,62 @@ export const updatePreOrderStatus = async (req: Request, res: Response) => {
   }
 };
 
-// Fulfill a pre-order
-export const fulfillPreOrder = async (req: Request, res: Response) => {
+// Get all pre-orders for a product
+export const getPreOrders = async (req: Request, res: Response) => {
   try {
     const db = await connectToDB();
-    const preOrderIdParam = req.params.id;
+    const productId = req.params.productId;
 
-    if (!preOrderIdParam) {
+    if (!productId) {
+      return res.status(400).json({ error: "Product ID is required" });
+    }
+
+    if (!ObjectId.isValid(productId)) {
+      return res.status(400).json({ error: "Invalid Product ID" });
+    }
+
+    const preOrders = await db
+      .collection<PreOrder>("preorders")
+      .find({ productId: new ObjectId(productId) })
+      .toArray();
+
+    res.status(200).json({ preOrders });
+  } catch (error) {
+    console.error("Error fetching pre-orders:", error);
+    res.status(500).json({ error: "Error fetching pre-orders" });
+  }
+};
+
+// Delete a pre-order
+export const deletePreOrderById = async (req: Request, res: Response) => {
+  try {
+    const db = await connectToDB();
+    const preOrderId = req.params.id;
+
+    if (!preOrderId) {
       return res.status(400).json({ error: "Pre-order ID is required" });
     }
 
-    if (!ObjectId.isValid(preOrderIdParam)) {
+    if (!ObjectId.isValid(preOrderId)) {
       return res.status(400).json({ error: "Invalid Pre-order ID" });
     }
 
-    const preOrderId = new ObjectId(preOrderIdParam);
-    const { fulfillmentDetails } = req.body;
-
-    if (!fulfillmentDetails || typeof fulfillmentDetails !== "string") {
-      return res.status(400).json({
-        error: "Fulfillment details are required and must be a string",
-      });
-    }
-
-    // Find the pre-order
     const preOrder = await db
       .collection<PreOrder>("preorders")
-      .findOne({ _id: preOrderId });
-    if (!preOrder)
+      .findOne({ _id: new ObjectId(preOrderId) });
+
+    if (!preOrder) {
       return res.status(404).json({ error: "Pre-order not found" });
-
-    // Only allow fulfilling from 'pending' status
-    if (preOrder.status !== "pending") {
-      return res.status(400).json({
-        error: `Cannot fulfill pre-order from status '${preOrder.status}'`,
-      });
     }
-
-    // Fetch product and user details
-    const product = await db
-      .collection<Product>("products")
-      .findOne({ _id: preOrder.productId });
-    const user = await db
-      .collection<User>("users")
-      .findOne({ _id: preOrder.userId });
-
-    if (!product) {
-      return res.status(404).json({ error: "Associated product not found" });
-    }
-
-    if (!user) {
-      return res.status(404).json({ error: "Associated user not found" });
-    }
-
-    // Assign an email to the pre-order from product's email list
-    if (!product.emails || product.emails.length === 0) {
-      return res
-        .status(400)
-        .json({ error: "No available emails to assign for fulfillment" });
-    }
-
-    const assignedEmail = product.emails.shift();
-    if (!assignedEmail) {
-      return res
-        .status(400)
-        .json({ error: "No available emails to assign for fulfillment" });
-    }
-
-    // Update the product's emails and availability
-    await db.collection<Product>("products").updateOne(
-      { _id: product._id },
-      {
-        $set: {
-          emails: product.emails,
-          isAvailable: product.emails.length > 0,
-        },
-      }
-    );
-
-    // Update the pre-order status, fulfillmentDate, and fulfillmentDetails
-    const updateFields: Partial<PreOrder> = {
-      status: "fulfilled",
-      fulfillmentDate: new Date(),
-      fulfillmentDetails,
-    };
 
     await db
       .collection<PreOrder>("preorders")
-      .updateOne({ _id: preOrderId }, { $set: updateFields });
+      .deleteOne({ _id: new ObjectId(preOrderId) });
 
-    // Log the fulfillment in history
-    const historyEntry: HistoryEntry = {
-      entity: "preorder",
-      entityId: preOrderId,
-      action: "fulfilled",
-      timestamp: new Date(),
-      performedBy: {
-        type: "system",
-        id: null,
-      },
-      details: `Pre-order fulfilled with details: '${fulfillmentDetails}' and assigned email: '${assignedEmail}'`,
-      metadata: {
-        preOrderId,
-        fulfillmentDetails,
-        assignedEmail,
-      },
-    };
-
-    await db.collection<HistoryEntry>("history").insertOne(historyEntry);
-
-    // Notify the user via the bot (updated to only notify the user)
-    const fulfillmentMessage = `Your pre-order for the product "${product.name}" has been fulfilled. The assigned email is: ${assignedEmail}. Additional message: ${preOrder.message}`;
-    await bot.api.sendMessage(user.telegramId, fulfillmentMessage);
-
-    res
-      .status(200)
-      .json({ message: "Pre-order fulfilled successfully", assignedEmail });
+    res.status(200).json({ message: "Pre-order deleted successfully" });
   } catch (error) {
-    console.error("Error fulfilling pre-order:", error);
-    res.status(500).json({ error: "Error fulfilling pre-order" });
+    console.error("Error deleting pre-order:", error);
+    res.status(500).json({ error: "Error deleting pre-order" });
   }
 };
 
@@ -299,65 +282,100 @@ export const getPreOrderById = async (req: Request, res: Response) => {
 
     res.status(200).json(preOrder);
   } catch (error) {
-    console.error("Error fetching pre-order:", error);
-    res.status(500).json({ error: "Error fetching pre-order" });
+    console.error("Error fetching pre-order by ID:", error);
+    res.status(500).json({ error: "Error fetching pre-order by ID" });
   }
 };
-
-// Delete a pre-order by ID
-export const deletePreOrderById = async (req: Request, res: Response) => {
+export const fulfillPreOrder = async (req: Request, res: Response) => {
   try {
     const db = await connectToDB();
-    const preOrderIdParam = req.params.id;
+    const preOrderId = req.params.id;
+    const { emailPassword } = req.body;
 
-    if (!preOrderIdParam) {
+    // Validate input
+    if (!preOrderId) {
       return res.status(400).json({ error: "Pre-order ID is required" });
     }
-
-    if (!ObjectId.isValid(preOrderIdParam)) {
+    if (!ObjectId.isValid(preOrderId)) {
       return res.status(400).json({ error: "Invalid Pre-order ID" });
     }
+    if (!emailPassword) {
+      return res
+        .status(400)
+        .json({ error: "Email and password are required for fulfillment." });
+    }
 
-    const preOrderId = new ObjectId(preOrderIdParam);
+    const preOrderObjectId = new ObjectId(preOrderId);
 
-    // Find the pre-order
+    // Fetch the pre-order
     const preOrder = await db
       .collection<PreOrder>("preorders")
-      .findOne({ _id: preOrderId });
-    if (!preOrder)
-      return res.status(404).json({ error: "Pre-order not found" });
-
-    // Delete the pre-order
-    const result = await db
-      .collection<PreOrder>("preorders")
-      .deleteOne({ _id: preOrderId });
-    if (result.deletedCount === 0) {
+      .findOne({ _id: preOrderObjectId });
+    if (!preOrder) {
       return res.status(404).json({ error: "Pre-order not found" });
     }
 
-    // Log the deletion in history
-    const historyEntry: HistoryEntry = {
-      entity: "preorder",
-      entityId: preOrderId,
-      action: "deleted",
-      timestamp: new Date(), // Assign Date object
-      performedBy: {
-        type: "system", // Since there's no user performing this action
-        id: null,
-      },
-      details: `Pre-order with ${preOrderId} deleted`,
-      metadata: {
-        preOrderId,
-        userId: preOrder.userId,
-        productId: preOrder.productId,
-      },
+    // Fetch the user
+    const user = await db
+      .collection<User>("users")
+      .findOne({ _id: preOrder.userId });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Fetch the product
+    const product = await db
+      .collection<Product>("products")
+      .findOne({ _id: preOrder.productId });
+    if (!product) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+
+    // Update the pre-order with fulfillment details
+    const fulfillmentDate = new Date();
+    await db.collection<PreOrder>("preorders").updateOne(
+      { _id: preOrderObjectId },
+      {
+        $set: {
+          status: "fulfilled",
+          fulfillmentDate,
+          clientMessageData: emailPassword,
+        },
+      }
+    );
+
+    // Notify the user via Telegram bot
+    const message =
+      `✅ طلبك للمنتج "${product.name}" قد تم تحقيقه بنجاح!\n\n` +
+      `📧 معلومات الطلب: ${emailPassword}\n` +
+      `💬 شكراً لتعاملك معنا!`;
+
+    await bot.api.sendMessage(user.telegramId, message);
+
+    // Log the fulfillment in history
+    const fulfillmentHistoryEntry = {
+      action: "preorder",
+      date: fulfillmentDate,
+      userId: preOrder.userId,
+      fullName: preOrder.userName,
+      email: emailPassword,
+      productId: preOrder.productId,
+      productName: product.name,
+      price: product.price,
+      status: "fulfilled",
+      message: preOrder.message,
+      responseMessage: message,
     };
 
-    await db.collection<HistoryEntry>("history").insertOne(historyEntry);
+    await logHistory("client", fulfillmentHistoryEntry);
 
-    res.status(200).json({ message: "Pre-order deleted successfully" });
+    res.status(200).json({
+      message: "Pre-order fulfilled successfully",
+      preOrderId,
+      fulfillmentDate,
+    });
   } catch (error) {
-    console.error("Error deleting pre-order:", error);
-    res.status(500).json({ error: "Error deleting pre-order" });
+    console.error("Error fulfilling pre-order:", error);
+    res.status(500).json({ error: "Error fulfilling pre-order" });
   }
 };

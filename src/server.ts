@@ -7,7 +7,7 @@ import productRoutes from "./routes/productRoutes";
 import categoryRoutes from "./routes/categoryRoutes";
 import notificationRoutes from "./routes/notificationRoutes";
 import preOrderRoutes from "./routes/preOrderRoutes";
-import historicRoutes from "./routes/historicRoutes"; // Import historic routes
+import historicRoutes from "./routes/history"; // Import historic routes
 import { asyncHandler } from "./utils/asyncHandler";
 
 dotenv.config();

@@ -3,7 +3,6 @@ import { Request, Response } from "express";
 import { ObjectId } from "mongodb";
 import { connectToDB } from "../db";
 import { Notification } from "../models/notification";
-import { HistoryEntry } from "../models/history";
 import { bot } from "../bot"; // Import the bot instance
 import { User } from "../models/user";
 
@@ -60,24 +59,6 @@ export const createNotification = async (req: Request, res: Response) => {
       .collection<Notification>("notifications")
       .insertOne(newNotification);
 
-    // Log the creation in the centralized history collection
-    const historyEntry: HistoryEntry = {
-      entity: "notification",
-      entityId: result.insertedId,
-      action: "created",
-      timestamp: new Date(),
-      performedBy: {
-        type: "admin",
-        id: null, // Replace with admin ID if available
-      },
-      details: `Notification '${title}' created`,
-      metadata: {
-        notificationId: result.insertedId,
-        title,
-      },
-    };
-    await db.collection<HistoryEntry>("history").insertOne(historyEntry);
-
     res.status(201).json({
       message: "Notification created",
       notificationId: result.insertedId,
@@ -112,24 +93,6 @@ export const updateNotificationById = async (req: Request, res: Response) => {
       }
     );
 
-    // Log the update in the centralized history collection
-    const historyEntry: HistoryEntry = {
-      entity: "notification",
-      entityId: notificationId,
-      action: "updated",
-      timestamp: new Date(),
-      performedBy: {
-        type: "admin",
-        id: null,
-      },
-      details: `Notification '${existingNotification.title}' updated`,
-      metadata: {
-        notificationId,
-        updatedFields,
-      },
-    };
-    await db.collection<HistoryEntry>("history").insertOne(historyEntry);
-
     if (result.matchedCount === 0) {
       return res.status(404).json({ error: "Notification not found" });
     }
@@ -159,24 +122,6 @@ export const deleteNotificationById = async (req: Request, res: Response) => {
     if (result.deletedCount === 0) {
       return res.status(404).json({ error: "Notification not found" });
     }
-
-    // Log the deletion in the centralized history collection
-    const historyEntry: HistoryEntry = {
-      entity: "notification",
-      entityId: notificationId,
-      action: "deleted",
-      timestamp: new Date(),
-      performedBy: {
-        type: "admin",
-        id: null,
-      },
-      details: `Notification '${existingNotification.title}' deleted`,
-      metadata: {
-        notificationId,
-        title: existingNotification.title,
-      },
-    };
-    await db.collection<HistoryEntry>("history").insertOne(historyEntry);
 
     res.status(200).json({ message: "Notification deleted" });
   } catch (error) {
@@ -220,24 +165,6 @@ export const sendNotificationById = async (req: Request, res: Response) => {
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     }
-
-    // Log the action in the centralized history collection
-    const historyEntry: HistoryEntry = {
-      entity: "notification",
-      entityId: notificationId,
-      action: "sent",
-      timestamp: new Date(),
-      performedBy: {
-        type: "admin",
-        id: null,
-      },
-      details: "Notification sent to all users",
-      metadata: {
-        notificationId,
-        title: notification.title,
-      },
-    };
-    await db.collection<HistoryEntry>("history").insertOne(historyEntry);
 
     res.status(200).json({ message: "Notification sent to all users" });
   } catch (error) {

@@ -1,37 +1,57 @@
 import { Request, Response } from "express";
 import { ObjectId } from "mongodb";
 import { connectToDB } from "../db";
-import { Product } from "../models/product";
-import { HistoryEntry } from "../models/history";
-import { Category } from "../models/category";
+import {
+  Product,
+  ProductSaleEvent,
+  ProductHistoryEntry,
+} from "../models/product";
 
-// Fetch all products
-export const getAllProducts = async (_req: Request, res: Response) => {
-  try {
-    const db = await connectToDB();
-    const products = await db.collection<Product>("products").find().toArray();
-    res.status(200).json(products);
-  } catch (error) {
-    console.error("Error fetching products:", error);
-    res.status(500).json({ error: "Error fetching products" });
+// Utility function to save history inside the Product model and in the history collection
+const saveToHistory = async (
+  productId: ObjectId,
+  action: "create" | "update" | "delete" | "sale",
+  details: string,
+  updatedFields?: Record<string, any>,
+  userDetails?: { fullName: string; phone: string },
+  productDetails?: { productName: string; categoryName: string }
+) => {
+  const db = await connectToDB();
+
+  // Construct the history entry
+  const historyEntry: ProductHistoryEntry = {
+    action,
+    date: new Date(),
+    details,
+    updatedFields: updatedFields || {},
+    userDetails: userDetails
+      ? { fullName: userDetails.fullName, phone: userDetails.phone }
+      : undefined,
+    productDetails: productDetails
+      ? {
+          productName: productDetails.productName,
+          categoryName: productDetails.categoryName,
+        }
+      : undefined,
+  };
+
+  // Save to product's history array
+  const productUpdateResult = await db
+    .collection("products")
+    .updateOne({ _id: productId }, { $push: { history: historyEntry } as any });
+
+  if (productUpdateResult.modifiedCount === 0) {
+    console.error("Failed to update product history for product:", productId);
   }
-};
 
-// Fetch a single product by ID
-export const getProductById = async (req: Request, res: Response) => {
-  try {
-    const db = await connectToDB();
-    const productId = new ObjectId(req.params.id);
-    const product = await db
-      .collection<Product>("products")
-      .findOne({ _id: productId });
+  // Save to global history collection
+  const historySaveResult = await db.collection("history").insertOne({
+    ...historyEntry,
+    productId,
+  });
 
-    if (!product) return res.status(404).json({ error: "Product not found" });
-
-    res.status(200).json(product);
-  } catch (error) {
-    console.error("Error fetching product:", error);
-    res.status(500).json({ error: "Error fetching product" });
+  if (!historySaveResult.insertedId) {
+    console.error("Failed to save global history entry:", historyEntry);
   }
 };
 
@@ -40,93 +60,68 @@ export const createProduct = async (req: Request, res: Response) => {
   try {
     const db = await connectToDB();
     const {
-      name = "Unnamed Product",
+      name,
       description = "",
       price,
       emails = [],
       categoryId,
-      password = "default_password",
+      isAvailable = false,
       allowPreOrder = false,
-    }: {
-      name?: string;
-      description?: string;
-      price: number;
-      emails: string[]; // Ensure emails is of type string[]
-      categoryId: string;
-      password?: string;
-      allowPreOrder?: boolean;
     } = req.body;
 
-    if (!price || !categoryId) {
-      return res
-        .status(400)
-        .json({ error: "Price and categoryId are required" });
+    if (!name || price === undefined || !categoryId) {
+      return res.status(400).json({ error: "Missing required fields" });
     }
 
-    // Validate categoryId format and check if category exists
-    if (!ObjectId.isValid(categoryId)) {
-      return res.status(400).json({ error: "Invalid category ID format" });
-    }
+    const categoryObjectId = new ObjectId(categoryId);
 
-    const category = await db
-      .collection<Category>("categories")
-      .findOne({ _id: new ObjectId(categoryId) });
-
-    if (!category)
-      return res.status(400).json({ error: "Invalid category ID" });
-
-    // Ensure emails are unique and valid
-    const uniqueEmails = [...new Set(emails)];
-    const invalidEmails = uniqueEmails.filter(
-      (email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-    );
-
-    if (invalidEmails.length > 0) {
-      return res.status(400).json({ error: "Invalid email(s) found" });
-    }
-
+    // Prepare product object
     const newProduct: Product = {
+      _id: new ObjectId(),
       name,
       description,
-      price,
-      emails: uniqueEmails.length > 0 ? uniqueEmails : [],
-      categoryId: new ObjectId(categoryId),
+      price: Number(price),
+      emails,
+      categoryId: categoryObjectId,
+      isAvailable,
       allowPreOrder,
-      isAvailable: uniqueEmails.length > 0,
       createdDate: new Date(),
+      archive: [],
+      history: [],
     };
 
+    // Insert product
     const result = await db
       .collection<Product>("products")
       .insertOne(newProduct);
 
-    // Log the creation in the centralized history collection
-    const historyEntry: HistoryEntry = {
-      entity: "product",
-      entityId: result.insertedId,
-      action: "created",
-      timestamp: new Date(),
-      performedBy: {
-        type: "admin",
-        id: null,
-      },
-      details: `Product '${name}' created`,
-      metadata: {
-        productId: result.insertedId,
-        name,
-        price,
-        categoryId: newProduct.categoryId,
-      },
-    };
-    await db.collection<HistoryEntry>("history").insertOne(historyEntry);
+    // Fetch category name for the history entry
+    const category = await db
+      .collection("categories")
+      .findOne({ _id: categoryObjectId });
+
+    const categoryName = category ? category.name : "Unknown Category";
+
+    // Save creation to history
+    await saveToHistory(
+      newProduct._id,
+      "create",
+      `Created product ${newProduct.name}`,
+      undefined,
+      undefined,
+      { productName: newProduct.name, categoryName }
+    );
 
     res.status(201).json({
-      message: "Product created",
-      productId: result.insertedId,
+      message: "Product created successfully",
+      product: newProduct,
     });
   } catch (error) {
-    console.error("Error creating product:", error);
-    res.status(500).json({ error: "Error creating product" });
+    console.error("Product Creation Error:", error);
+    res.status(500).json({
+      error: "Error creating product",
+      message: error instanceof Error ? error.message : String(error),
+    });
   }
 };
 
@@ -134,105 +129,136 @@ export const createProduct = async (req: Request, res: Response) => {
 export const updateProductById = async (req: Request, res: Response) => {
   try {
     const db = await connectToDB();
-    const productId = new ObjectId(req.params.id);
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid product ID format" });
+    }
+
+    const productId = new ObjectId(id);
     const {
       name,
       description,
       price,
       emails = [],
       categoryId,
-      password,
       allowPreOrder,
-    }: {
-      name?: string;
-      description?: string;
-      price?: number;
-      emails: string[]; // Ensure emails is of type string[]
-      categoryId?: string;
-      password?: string;
-      allowPreOrder?: boolean;
+      isAvailable,
     } = req.body;
 
-    // Check if product exists
     const existingProduct = await db
       .collection<Product>("products")
       .findOne({ _id: productId });
 
-    if (!existingProduct)
+    if (!existingProduct) {
       return res.status(404).json({ error: "Product not found" });
-
-    // Validate and check if category exists if categoryId is provided
-    if (categoryId && !ObjectId.isValid(categoryId)) {
-      return res.status(400).json({ error: "Invalid category ID format" });
     }
 
-    if (categoryId) {
-      const categoryExists = await db
-        .collection<Category>("categories")
-        .findOne({ _id: new ObjectId(categoryId) });
+    const updatedFields: Record<string, any> = {};
 
-      if (!categoryExists)
-        return res.status(400).json({ error: "Category not found" });
-    }
+    if (emails.length > 0) {
+      const oldEmails = existingProduct.emails;
+      const addedEmails = emails.filter(
+        (email: string) => !oldEmails.includes(email)
+      );
+      const removedEmails = oldEmails.filter(
+        (email) => !emails.includes(email)
+      );
 
-    // Validate emails format
-    const updatedEmails = emails
-      ? [...new Set(emails)]
-      : existingProduct.emails;
-    const invalidEmails = updatedEmails.filter(
-      (email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-    );
-
-    if (invalidEmails.length > 0) {
-      return res.status(400).json({ error: "Invalid email(s) found" });
-    }
-
-    const updatedFields: Partial<Product> = {
-      name: name ?? existingProduct.name,
-      description: description ?? existingProduct.description,
-      price: price ?? existingProduct.price,
-      emails: updatedEmails,
-      allowPreOrder: allowPreOrder ?? existingProduct.allowPreOrder,
-      isAvailable: updatedEmails.length > 0,
-    };
-
-    if (categoryId) {
-      updatedFields.categoryId = new ObjectId(categoryId);
-    }
-
-    const result = await db.collection<Product>("products").updateOne(
-      { _id: productId },
-      {
-        $set: updatedFields,
+      if (addedEmails.length > 0 || removedEmails.length > 0) {
+        updatedFields["emails"] = {
+          old: oldEmails,
+          new: emails,
+          added: addedEmails,
+          removed: removedEmails,
+        };
       }
-    );
-
-    // Log the update in the history collection
-    const historyEntry: HistoryEntry = {
-      entity: "product",
-      entityId: productId,
-      action: "updated",
-      timestamp: new Date(),
-      performedBy: {
-        type: "admin",
-        id: null,
-      },
-      details: `Product '${existingProduct.name}' updated`,
-      metadata: {
-        productId,
-        updatedFields,
-      },
-    };
-    await db.collection<HistoryEntry>("history").insertOne(historyEntry);
-
-    if (result.matchedCount === 0) {
-      return res.status(404).json({ error: "Product not found" });
     }
 
-    res.status(200).json({ message: "Product updated" });
+    if (name && name !== existingProduct.name) {
+      updatedFields["name"] = { old: existingProduct.name, new: name };
+    }
+
+    if (price && price !== existingProduct.price) {
+      updatedFields["price"] = { old: existingProduct.price, new: price };
+    }
+
+    if (categoryId && categoryId !== existingProduct.categoryId.toString()) {
+      updatedFields["categoryId"] = {
+        old: existingProduct.categoryId.toString(),
+        new: categoryId,
+      };
+    }
+
+    if (
+      allowPreOrder !== undefined &&
+      allowPreOrder !== existingProduct.allowPreOrder
+    ) {
+      updatedFields["allowPreOrder"] = {
+        old: existingProduct.allowPreOrder,
+        new: allowPreOrder,
+      };
+    }
+
+    if (
+      isAvailable !== undefined &&
+      isAvailable !== existingProduct.isAvailable
+    ) {
+      updatedFields["isAvailable"] = {
+        old: existingProduct.isAvailable,
+        new: isAvailable,
+      };
+    }
+
+    const updatedProduct: Product = {
+      ...existingProduct,
+      name: name || existingProduct.name,
+      description: description || existingProduct.description,
+      price:
+        price !== undefined ? parseFloat(String(price)) : existingProduct.price,
+      emails: emails.length ? emails : existingProduct.emails,
+      categoryId: categoryId
+        ? new ObjectId(categoryId)
+        : existingProduct.categoryId,
+      allowPreOrder: allowPreOrder ?? existingProduct.allowPreOrder,
+      isAvailable: isAvailable ?? existingProduct.isAvailable,
+    };
+
+    const updateResult = await db
+      .collection<Product>("products")
+      .updateOne({ _id: productId }, { $set: updatedProduct });
+
+    if (updateResult.modifiedCount === 0) {
+      return res
+        .status(404)
+        .json({ error: "Product not found or not modified" });
+    }
+
+    const category = await db
+      .collection("categories")
+      .findOne({ _id: updatedProduct.categoryId });
+
+    const categoryName = category ? category.name : "Unknown Category";
+
+    await saveToHistory(
+      productId,
+      "update",
+      `Updated product details`,
+      updatedFields,
+      undefined,
+      { productName: updatedProduct.name, categoryName }
+    );
+
+    res.status(200).json({
+      message: "Product updated successfully",
+      product: updatedProduct,
+    });
   } catch (error) {
-    console.error("Error updating product:", error);
-    res.status(500).json({ error: "Error updating product" });
+    console.error("Update Product Error:", error);
+    res.status(500).json({
+      error: "Error updating product",
+      errorDetails: error instanceof Error ? error.message : error,
+    });
   }
 };
 
@@ -240,46 +266,161 @@ export const updateProductById = async (req: Request, res: Response) => {
 export const deleteProductById = async (req: Request, res: Response) => {
   try {
     const db = await connectToDB();
-    const productId = new ObjectId(req.params.id);
+    const { id } = req.params;
 
-    // Find the existing product
-    const existingProduct = await db
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid product ID format" });
+    }
+
+    const productId = new ObjectId(id);
+    const product = await db
       .collection<Product>("products")
       .findOne({ _id: productId });
 
-    if (!existingProduct)
-      return res.status(404).json({ error: "Product not found" });
-
-    // Delete the product
-    const result = await db
-      .collection<Product>("products")
-      .deleteOne({ _id: productId });
-
-    if (result.deletedCount === 0) {
+    if (!product) {
       return res.status(404).json({ error: "Product not found" });
     }
 
-    // Log the deletion in the history collection
-    const historyEntry: HistoryEntry = {
-      entity: "product",
-      entityId: productId,
-      action: "deleted",
-      timestamp: new Date(),
-      performedBy: {
-        type: "admin",
-        id: null,
-      },
-      details: `Product '${existingProduct.name}' deleted`,
-      metadata: {
-        productId,
-        name: existingProduct.name,
-      },
-    };
-    await db.collection<HistoryEntry>("history").insertOne(historyEntry);
+    const salesHistoryWithFullNames = await Promise.all(
+      product.archive.map(async (sale) => {
+        const user = await db
+          .collection("users")
+          .findOne({ _id: new ObjectId(sale.soldTo) });
 
-    res.status(200).json({ message: "Product deleted" });
+        const fullName = user ? user.fullName : "Unknown User";
+        const phone = user ? user.phone : "Unknown Phone";
+
+        const category = await db
+          .collection("categories")
+          .findOne({ _id: product.categoryId });
+        const categoryName = category ? category.name : "Unknown Category";
+
+        await saveToHistory(
+          product._id,
+          "sale",
+          `Product sold to ${fullName}`,
+          {},
+          { fullName, phone },
+          { productName: product.name, categoryName }
+        );
+
+        return {
+          userId: sale.soldTo,
+          fullName,
+          phone,
+          date: sale.soldAt,
+          price: sale.price,
+        };
+      })
+    );
+
+    const archiveEntry = {
+      ...product,
+      salesHistory: salesHistoryWithFullNames,
+    };
+
+    const deleteResult = await db
+      .collection("products")
+      .deleteOne({ _id: productId });
+
+    if (deleteResult.deletedCount === 0) {
+      return res
+        .status(404)
+        .json({ error: "Product not found or not deleted" });
+    }
+
+    await saveToHistory(
+      productId,
+      "delete",
+      `Deleted product ${product.name}`,
+      undefined,
+      undefined,
+      { productName: product.name, categoryName: "Deleted Category" }
+    );
+
+    res.status(200).json({
+      message: "Product deleted successfully",
+      archiveEntry,
+    });
   } catch (error) {
-    console.error("Error deleting product:", error);
-    res.status(500).json({ error: "Error deleting product" });
+    console.error("Delete Product Error:", error);
+    res.status(500).json({
+      error: "Error deleting product",
+      errorDetails: error instanceof Error ? error.message : error,
+    });
+  }
+};
+
+export const getAllProducts = async (req: Request, res: Response) => {
+  try {
+    const db = await connectToDB();
+    // Fetch all products from the 'products' collection
+    const products = await db.collection<Product>("products").find().toArray();
+
+    if (!products.length) {
+      return res.status(404).json({ message: "No products found" });
+    }
+
+    res.status(200).json(products);
+  } catch (error) {
+    console.error("Error fetching all products:", error);
+    res.status(500).json({
+      error: "Error fetching all products",
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+};
+
+// Get product by ID
+export const getProductById = async (req: Request, res: Response) => {
+  try {
+    const db = await connectToDB();
+    const { id } = req.params;
+
+    // Validate the product ID
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid product ID format" });
+    }
+
+    // Fetch the product by its ID
+    const product = await db
+      .collection<Product>("products")
+      .findOne({ _id: new ObjectId(id) });
+
+    if (!product) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+
+    res.status(200).json(product);
+  } catch (error) {
+    console.error("Error fetching product by ID:", error);
+    res.status(500).json({
+      error: "Error fetching product by ID",
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+};
+
+// Get archived products
+export const getArchivedProducts = async (req: Request, res: Response) => {
+  try {
+    const db = await connectToDB();
+    // Fetch all archived products from the 'product_archive' collection
+    const archivedProducts = await db
+      .collection("product_archive")
+      .find()
+      .toArray();
+
+    if (!archivedProducts.length) {
+      return res.status(404).json({ message: "No archived products found" });
+    }
+
+    res.status(200).json(archivedProducts);
+  } catch (error) {
+    console.error("Error fetching archived products:", error);
+    res.status(500).json({
+      error: "Error fetching archived products",
+      message: error instanceof Error ? error.message : String(error),
+    });
   }
 };

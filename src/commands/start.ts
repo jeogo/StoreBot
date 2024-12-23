@@ -14,10 +14,10 @@ export const handleStartCommand = async (ctx: MyContext) => {
     const chatId = ctx.chat?.id.toString();
     const username = ctx.from?.username || "مستخدم غير معروف";
     const name = ctx.from?.first_name || "مستخدم";
-    console.log(ctx.from?.id);
+
     if (!telegramId || !chatId) {
       console.warn("Missing telegramId or chatId.");
-      return;
+      return ctx.reply("❌ حدث خطأ في التعرف على المستخدم.");
     }
 
     const db = await connectToDB();
@@ -28,32 +28,27 @@ export const handleStartCommand = async (ctx: MyContext) => {
 
     if (!user) {
       // Register a new user
-      const newUser: User = await {
+      const newUser: User = {
         telegramId,
         chatId,
         username,
         name,
         balance: 0,
         registerDate: new Date(),
-        isActive: true,
         isAccepted: false,
         fullName: "",
         phoneNumber: "",
       };
 
-      const result = await userCollection.insertOne(newUser);
-      user = { ...newUser, _id: result.insertedId };
+      await userCollection.insertOne(newUser);
 
-      // Notify admin of the new user
-      await sendAdminNotification(ctx, user);
-
-      // Ask for full name
+      // Ask for full name first
       ctx.session.awaitingFullName = true;
       await ctx.reply("🔤 يُرجى إدخال اسمك الكامل:");
       return;
     }
 
-    // Handle existing users
+    // Check user status and guide accordingly
     if (!user.fullName) {
       ctx.session.awaitingFullName = true;
       await ctx.reply("🔤 يُرجى إدخال اسمك الكامل:");
@@ -80,18 +75,21 @@ export const handleFullNameInput = async (ctx: MyContext): Promise<void> => {
     if (!telegramId) return;
 
     const fullName = ctx.message?.text;
-    if (!fullName) {
-      await ctx.reply("❌ يُرجى إدخال اسم كامل صالح.");
+    if (!fullName || fullName.trim().length < 3) {
+      await ctx.reply("❌ يُرجى إدخال اسم كامل صالح (على الأقل 3 أحرف).");
+      ctx.session.awaitingFullName = true;
+      await ctx.reply("🔤 يُرجى إدخال اسمك الكامل:");
       return;
     }
 
     const db = await connectToDB();
-    await db
+    const result = await db
       .collection<User>("users")
       .updateOne({ telegramId }, { $set: { fullName } });
 
     ctx.session.awaitingFullName = false;
     ctx.session.awaitingPhoneNumber = true;
+
     await ctx.reply(
       "✅ تم حفظ اسمك الكامل بنجاح.\n\n📞 يُرجى الآن إدخال رقم هاتفك:"
     );
@@ -101,7 +99,6 @@ export const handleFullNameInput = async (ctx: MyContext): Promise<void> => {
   }
 };
 
-// Handle user input for the phone number
 export const handlePhoneNumberInput = async (ctx: MyContext): Promise<void> => {
   try {
     const telegramId = ctx.from?.id.toString();
@@ -129,19 +126,61 @@ export const handlePhoneNumberInput = async (ctx: MyContext): Promise<void> => {
 };
 
 // Notify admin of a new user
-const sendAdminNotification = async (ctx: MyContext, user: User) => {
+export const sendAdminNotification = async (ctx: MyContext, user: User) => {
   try {
-    const message = NewUserMessage(user);
+    // Create a detailed message for the admin
+    const message = `🆕 *مستخدم جديد*
 
+*الاسم:* ${user.fullName || "غير محدد"}
+*اسم المستخدم:* ${user.username || "غير محدد"}
+*معرف التليجرام:* \`${user.telegramId}\`
+*رقم الهاتف:* ${user.phoneNumber || "غير محدد"}
+*تاريخ التسجيل:* ${
+      user.registerDate ? user.registerDate.toLocaleDateString() : "غير محدد"
+    }
+
+*الإجراءات:*
+• يرجى مراجعة وقبول المستخدم
+• تحقق من صحة المعلومات المقدمة`;
+
+    // Send the message to the admin
     await ctx.api.sendMessage(ADMIN_TELEGRAM_ID, message, {
       parse_mode: "Markdown",
+      // Optional: Add inline keyboard for quick actions
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "✅ قبول",
+              callback_data: `accept_user_${user.telegramId}`,
+            },
+            {
+              text: "❌ رفض",
+              callback_data: `reject_user_${user.telegramId}`,
+            },
+          ],
+        ],
+      },
     });
+
+    console.log(`Admin notification sent for user: ${user.telegramId}`);
   } catch (error) {
     console.error("Error sending admin notification:", error);
+
+    // Additional error handling
+    try {
+      // Fallback to sending a simple text message if Markdown fails
+      await ctx.api.sendMessage(
+        ADMIN_TELEGRAM_ID,
+        `إشعار مستخدم جديد\nمعرف التليجرام: ${user.telegramId}`
+      );
+    } catch (fallbackError) {
+      console.error("Fallback admin notification failed:", fallbackError);
+    }
   }
 };
 
-// Show the main menu
+// Show the main menu once the user is approved
 const showMainMenu = async (ctx: MyContext, name: string) => {
   try {
     const keyboard = new Keyboard()

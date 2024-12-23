@@ -2,16 +2,14 @@ import { ObjectId } from "mongodb";
 import { bot } from "../bot";
 import { connectToDB } from "../db";
 import { PreOrder } from "../models/preorder";
-import { HistoryEntry } from "../models/history";
+import { ComprehensiveHistory } from "../models/comprehensiveHistory"; // Updated import
 import { User } from "../models/user";
 import { Product } from "../models/product";
 import { AdminMessages, UserMessages, ErrorMessages } from "../utils/messages";
 
 const ADMIN_TELEGRAM_ID = process.env.TELEGRAM_ADMIN_ID || "5565239578";
 
-/**
- * Creates a pre-order in the database.
- */
+// Function to create a pre-order
 export const createPreOrderInDB = async (
   userId: ObjectId,
   productId: ObjectId,
@@ -46,16 +44,19 @@ export const createPreOrderInDB = async (
     productId,
     date: new Date(),
     status: "pending",
-    message,
-    fullName: user.fullName || "غير متوفر", // Add full name
+    message, // User's message
     userName: user.username,
+    fullName: user.fullName || "غير متوفر", // Full name
     userTelegramId: user.telegramId,
     productName: product.name,
     productPrice: product.price,
   };
 
+  // Insert pre-order into database
   await db.collection<PreOrder>("preorders").insertOne(newPreOrder);
-  await logPreOrderHistory(newPreOrder);
+
+  // Log pre-order creation in history
+  await logPreOrderHistory(newPreOrder, message); // Save the user's message
 
   return newPreOrder;
 };
@@ -63,33 +64,36 @@ export const createPreOrderInDB = async (
 /**
  * Logs pre-order creation in the history.
  */
-const logPreOrderHistory = async (preOrder: PreOrder) => {
+const logPreOrderHistory = async (preOrder: PreOrder, userMessage: string) => {
   const db = await connectToDB();
 
-  const historyEntry: HistoryEntry = {
-    entity: "preorder",
-    entityId: preOrder._id,
-    action: "created",
-    timestamp: new Date(),
-    performedBy: {
-      type: "user",
-      id: preOrder.userId.toHexString(),
-    },
-    details: AdminMessages.notifyAdminPreOrder(
-      preOrder.fullName,
-      preOrder.userName,
-      preOrder.productName,
-      preOrder.message
-    ),
-    metadata: {
-      userId: preOrder.userId,
-      productId: preOrder.productId,
-      price: preOrder.productPrice,
-      message: preOrder.message,
-    },
+  // Fetch product category name
+  const product = await db
+    .collection<Product>("products")
+    .findOne({ _id: new ObjectId(preOrder.productId) });
+
+  let categoryName = "غير محدد";
+  if (product?.categoryId) {
+    const category = await db.collection("categories").findOne({
+      _id: new ObjectId(product.categoryId),
+    });
+    categoryName = category?.name || "غير محدد";
+  }
+
+  const historyEntry: ComprehensiveHistory = {
+    _id: new ObjectId(),
+    userId: preOrder.userId,
+    actionType: "preOrder", // Action type: 'preOrder'
+    date: new Date(),
+    description: `طلب مسبق للمنتج '${preOrder.productName}' من المستخدم '${preOrder.userName}' مع الرسالة: ${userMessage}`,
+    productId: preOrder.productId,
+    productName: preOrder.productName,
+    price: preOrder.productPrice,
+    categoryName, // Save category name in history
+    userMessage, // Save the user's message
   };
 
-  await db.collection<HistoryEntry>("history").insertOne(historyEntry);
+  await db.collection<ComprehensiveHistory>("history").insertOne(historyEntry);
 };
 
 /**

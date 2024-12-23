@@ -19,7 +19,7 @@ router.get("/", getAllCategories);
 router.get("/:id", asyncHandler(getCategoryById));
 
 // Create a new category
-router.post("/", createCategory);
+router.post("/", asyncHandler(createCategory));
 
 // Update a category by ID
 router.put("/:id", asyncHandler(updateCategoryById));

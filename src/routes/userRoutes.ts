@@ -5,7 +5,6 @@ import {
   updateUserById,
   deleteUserById,
   updateUserBalanceById,
-  resetUserBalanceById,
 } from "../controllers/userController";
 import { asyncHandler } from "../utils/asyncHandler";
 
@@ -27,6 +26,5 @@ router.delete("/:id", asyncHandler(deleteUserById));
 router.put("/:id/balance", asyncHandler(updateUserBalanceById));
 
 // Route to reset user balance by ID
-router.put("/:id/reset", asyncHandler(resetUserBalanceById));
 
 export default router;
