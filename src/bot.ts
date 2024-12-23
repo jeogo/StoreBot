@@ -31,7 +31,7 @@ if (!BOT_TOKEN) {
 }
 
 const client = new MongoClient(process.env.MONGODB_URI || ""); // Fallback if MONGO_URI is not set
-const db = client.db("test");
+const db = client.db("chamso");
 const usersCollection = db.collection("users");
 
 // Define session data interface

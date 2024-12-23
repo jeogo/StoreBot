@@ -2,7 +2,6 @@ import { MyContext } from "../types";
 import { connectToDB } from "../db";
 import { User } from "../models/user";
 import { Keyboard } from "grammy";
-import { NewUserMessage } from "../utils/messages";
 
 // Define admin Telegram ID from environment
 const ADMIN_TELEGRAM_ID = process.env.TELEGRAM_ADMIN_ID || "5565239578";
