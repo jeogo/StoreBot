@@ -17,7 +17,7 @@ export interface User {
 
 // Unified User Event Interface
 export interface UserEvent {
-  type: "recharge" | "stat  us" | "delete" | "purchase"; // Added "purchase" type
+  type: "recharge" | "status" | "delete" | "purchase"; // Added "purchase" type
   date: Date;
   amount?: number; // Optional for recharge
   status?: string; // Optional for status
