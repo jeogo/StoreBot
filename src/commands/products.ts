@@ -20,19 +20,16 @@ interface CategoryWithId extends WithId<Category> {
 
 // Helper Functions
 const formatPrice = (price: number): string => {
-  return `${price.toLocaleString("ar-SA")}₪`;
+  return `${price}₪`;
 };
 
-const getStatusEmoji = (
-  quantity: number,
-  allowPreOrder: boolean
-): StatusEmoji => {
+const getStatusEmoji = (quantity: number, allowPreOrder: boolean): StatusEmoji => {
   if (quantity > 0) return "✅";
   return allowPreOrder ? "⏳" : "❌";
 };
 
 const formatTimestamp = (): string => {
-  return new Date().toLocaleString("ar-SA", {
+  return new Date().toLocaleString("en-US", {
     weekday: "long",
     year: "numeric",
     month: "long",
