@@ -25,7 +25,7 @@ import { startServer } from "./server";
 // Load environment variables
 dotenv.config();
 
-const BOT_TOKEN = process.env.BOT_TOKEN;
+const {BOT_TOKEN} = process.env;
 if (!BOT_TOKEN) {
   throw new Error("BOT_TOKEN is not set in environment variables.");
 }

@@ -136,15 +136,7 @@ export const updateProductById = async (req: Request, res: Response) => {
     }
 
     const productId = new ObjectId(id);
-    const {
-      name,
-      description,
-      price,
-      emails = [],
-      categoryId,
-      allowPreOrder,
-      isAvailable,
-    } = req.body;
+    const { emails } = req.body; // Only extract the fields you need
 
     const existingProduct = await db
       .collection<Product>("products")
@@ -156,14 +148,10 @@ export const updateProductById = async (req: Request, res: Response) => {
 
     const updatedFields: Record<string, any> = {};
 
-    if (emails.length > 0) {
+    if (emails && emails.length > 0) {
       const oldEmails = existingProduct.emails;
-      const addedEmails = emails.filter(
-        (email: string) => !oldEmails.includes(email)
-      );
-      const removedEmails = oldEmails.filter(
-        (email) => !emails.includes(email)
-      );
+      const addedEmails = emails.filter((email: string) => !oldEmails.includes(email));
+      const removedEmails = oldEmails.filter((email) => !emails.includes(email));
 
       if (addedEmails.length > 0 || removedEmails.length > 0) {
         updatedFields["emails"] = {
@@ -175,83 +163,33 @@ export const updateProductById = async (req: Request, res: Response) => {
       }
     }
 
-    if (name && name !== existingProduct.name) {
-      updatedFields["name"] = { old: existingProduct.name, new: name };
-    }
-
-    if (price && price !== existingProduct.price) {
-      updatedFields["price"] = { old: existingProduct.price, new: price };
-    }
-
-    if (categoryId && categoryId !== existingProduct.categoryId.toString()) {
-      updatedFields["categoryId"] = {
-        old: existingProduct.categoryId.toString(),
-        new: categoryId,
-      };
-    }
-
-    if (
-      allowPreOrder !== undefined &&
-      allowPreOrder !== existingProduct.allowPreOrder
-    ) {
-      updatedFields["allowPreOrder"] = {
-        old: existingProduct.allowPreOrder,
-        new: allowPreOrder,
-      };
-    }
-
-    if (
-      isAvailable !== undefined &&
-      isAvailable !== existingProduct.isAvailable
-    ) {
-      updatedFields["isAvailable"] = {
-        old: existingProduct.isAvailable,
-        new: isAvailable,
-      };
-    }
-
-    const updatedProduct: Product = {
-      ...existingProduct,
-      name: name || existingProduct.name,
-      description: description || existingProduct.description,
-      price:
-        price !== undefined ? parseFloat(String(price)) : existingProduct.price,
-      emails: emails.length ? emails : existingProduct.emails,
-      categoryId: categoryId
-        ? new ObjectId(categoryId)
-        : existingProduct.categoryId,
-      allowPreOrder: allowPreOrder ?? existingProduct.allowPreOrder,
-      isAvailable: isAvailable ?? existingProduct.isAvailable,
-    };
-
+    // Only update the emails field
     const updateResult = await db
       .collection<Product>("products")
-      .updateOne({ _id: productId }, { $set: updatedProduct });
+      .updateOne({ _id: productId }, { $set: { emails } });
 
     if (updateResult.modifiedCount === 0) {
-      return res
-        .status(404)
-        .json({ error: "Product not found or not modified" });
+      return res.status(404).json({ error: "Product not found or not modified" });
     }
 
     const category = await db
       .collection("categories")
-      .findOne({ _id: updatedProduct.categoryId });
+      .findOne({ _id: existingProduct.categoryId });
 
     const categoryName = category ? category.name : "Unknown Category";
 
     await saveToHistory(
       productId,
       "update",
-      `Updated product details`,
+      `Updated product emails`,
       updatedFields,
       undefined,
-      { productName: updatedProduct.name, categoryName }
+      { productName: existingProduct.name, categoryName }
     );
 
     res.status(200).json({
       message: "Product updated successfully",
-      product: updatedProduct,
+      product: { ...existingProduct, emails },
     });
   } catch (error) {
     console.error("Update Product Error:", error);
