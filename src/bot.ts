@@ -301,7 +301,7 @@ bot.on("message:text", async (ctx) => {
 
 // Global Error Handler
 bot.catch((error) => {
-  const ctx = error.ctx;
+  const {ctx} = error;
   console.error("Error while handling update:", error.error);
   ctx.reply(
     "⚠️ حدث خطأ غير متوقع. الرجاء المحاولة مرة أخرى لاحقًا أو التواصل مع الدعم."
