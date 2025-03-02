@@ -74,7 +74,7 @@ const saveToHistory = async (
 const sendSupportMessage = async (ctx: MyContext): Promise<void> => {
   const supportKeyboard = new InlineKeyboard().url(
     "📞 تواصل عبر WhatsApp",
-    "https://wa.me/1234567890"
+    "https://wa.me/213557349101"
   );
 
   await ctx.reply(
