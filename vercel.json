@@ -5,11 +5,5 @@
       "src": "src/bot.ts",
       "use": "@vercel/node"
     }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "src/bot.ts"
-    }
   ]
 }
