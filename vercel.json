@@ -11,10 +11,5 @@
       "src": "/(.*)",
       "dest": "src/bot.ts"
     }
-  ],
-  "env": {
-    "BOT_TOKEN": "@bot_token",
-    "MONGODB_URI": "@mongodb_uri",
-    "PORT": "3000"
-  }
+  ]
 }
