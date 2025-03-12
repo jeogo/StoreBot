@@ -1,1 +1,4 @@
-{ "version": 2, "builds": [{ "src":"./src/bot.ts" }] }
+{"version": 2,
+"builds": [{ "src": "./src/bot.ts", "use": "@vercel/node" }],
+"routes": [{ "src": "/(.*)", "dest": "/" }]
+}
