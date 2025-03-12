@@ -2,7 +2,7 @@
   "version": 2,
   "builds": [
     {
-      "src": "./src/bot.ts",
+      "src": "src/bot.ts",
       "use": "@vercel/node"
     }
   ],
@@ -12,10 +12,9 @@
       "dest": "src/bot.ts"
     }
   ],
-  "functions": {
-    "src/bot.ts": {
-      "memory": 1024,
-      "maxDuration": 10
-    }
+  "env": {
+    "BOT_TOKEN": "@bot_token",
+    "MONGODB_URI": "@mongodb_uri",
+    "PORT": "3000"
   }
 }
