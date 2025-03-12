@@ -1,1 +1,1 @@
-{ "version": 2, "builds": [{ "src:"./src/bot.ts", "destination": "/api" }] }
+{ "version": 2, "builds": [{ "src":"./src/bot.ts", "destination": "/api" }] }
