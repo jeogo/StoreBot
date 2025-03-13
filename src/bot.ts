@@ -25,7 +25,7 @@ import { startServer } from "./server";
 // Load environment variables
 dotenv.config();
 
-const {BOT_TOKEN} = process.env;
+const { BOT_TOKEN, WEBHOOK_URL } = process.env;
 if (!BOT_TOKEN) {
   throw new Error("BOT_TOKEN is not set in environment variables.");
 }
@@ -301,7 +301,7 @@ bot.on("message:text", async (ctx) => {
 
 // Global Error Handler
 bot.catch((error) => {
-  const {ctx} = error;
+  const { ctx } = error;
   console.error("Error while handling update:", error.error);
   ctx.reply(
     "⚠️ حدث خطأ غير متوقع. الرجاء المحاولة مرة أخرى لاحقًا أو التواصل مع الدعم."
@@ -311,8 +311,13 @@ bot.catch((error) => {
 // Start the server and bot
 startServer()
   .then(() => {
-    bot.start();
-    console.log("🤖 تم تشغيل البوت بنجاح...");
+    if (WEBHOOK_URL) {
+      bot.api.setWebhook(`${WEBHOOK_URL}/bot${BOT_TOKEN}`);
+      console.log("🤖 Webhook set successfully...");
+    } else {
+      bot.start();
+      console.log("🤖 Bot started successfully...");
+    }
   })
   .catch((err) => {
     console.error("⚠️ فشل تشغيل الخادم:", err);
