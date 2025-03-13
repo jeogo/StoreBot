@@ -1,8 +1,9 @@
 // src/helpers/transactionLogger.ts
-import { User, HistoryEntry } from "../models/user";
+import { User, UserEvent } from "../models/user";
 import { Context } from "grammy";
 
-export const logTransaction = (user: User, entry: HistoryEntry) => {
+export const logTransaction = (user: User, entry: UserEvent) => {
+  user.history = user.history || [];
   user.history.push(entry); // Add the new entry to the user's history
 };
 
@@ -32,8 +33,7 @@ export const handlePurchase = async (
     date: new Date(),
     type: "purchase",
     amount: productPrice,
-    productName,
-    description: `شراء منتج: ${productName}`,
+    productName
   });
 
   await sendBalanceUpdateMessage(ctx, user, oldBalance);

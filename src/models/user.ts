@@ -13,6 +13,7 @@ export interface User {
   registerDate: Date; // Date of user registration
   isAccepted: boolean; // Controls bot access
   history?: UserEvent[]; // Combined history of user events
+  paymentHistory?: PaymentHistoryEntry[]; // Payment history
 }
 
 // Unified User Event Interface
@@ -27,4 +28,11 @@ export interface UserEvent {
   emailSold?: string; // New field for storing sold email
   categoryName?: string; // Add this field
   adminAction?: "Recharge" | "Discount"; // New field for specifying admin action type
+}
+
+// Payment History Entry Interface
+export interface PaymentHistoryEntry {
+  date: Date;
+  amount: number;
+  description: string;
 }

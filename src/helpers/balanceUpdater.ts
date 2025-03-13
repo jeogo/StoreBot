@@ -1,11 +1,12 @@
 // src/helpers/balanceUpdater.ts
 import { Context } from "grammy";
-import { User, HistoryEntry, PaymentHistoryEntry } from "../models/user";
+import { User, UserEvent, PaymentHistoryEntry } from "../models/user";
 import { db } from "../db"; // MongoDB connection
 
 // Log a transaction in the user's history
-export const logTransaction = async (user: User, entry: HistoryEntry) => {
+export const logTransaction = async (user: User, entry: UserEvent) => {
   console.log("Logging transaction:", entry);
+  user.history = user.history || [];
   user.history.push(entry);
   await db
     .collection("users")
@@ -32,14 +33,15 @@ export const updateBalance = async (
     amount: amount,
     description: `Balance updated by ${amount} points.`,
   };
+  user.paymentHistory = user.paymentHistory || [];
   user.paymentHistory.push(paymentEntry);
 
   // Log transaction history
-  const historyEntry: HistoryEntry = {
+  const historyEntry: UserEvent = {
     date: new Date(),
-    type: "charge",
+    type: "recharge",
     amount: amount,
-    description: `Balance increased by ${amount} points.`,
+    // Removed 'description' to match the 'UserEvent' interface
   };
   await logTransaction(user, historyEntry);
 
