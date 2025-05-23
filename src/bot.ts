@@ -21,6 +21,7 @@ import {
 import { handleAccountCommand } from "./commands/account";
 import { handleSupportCommand } from "./commands/support";
 import { startServer } from "./server";
+import { startSalesReportScheduler } from './helpers/salesReportScheduler';
 
 // Load environment variables
 dotenv.config();
@@ -31,7 +32,7 @@ if (!BOT_TOKEN) {
 }
 
 const client = new MongoClient(process.env.MONGODB_URI || ""); // Fallback if MONGO_URI is not set
-const db = client.db("chamso");
+const db = client.db("test");
 const usersCollection = db.collection("users");
 
 // Define session data interface
@@ -312,10 +313,11 @@ bot.catch((error) => {
 startServer()
   .then(() => {
     bot.start();
-    console.log("🤖 تم تشغيل البوت بنجاح...");
+    startSalesReportScheduler(); // تشغيل جدولة تقارير المبيعات
+    console.log('🤖 تم تشغيل البوت بنجاح...');
   })
   .catch((err) => {
-    console.error("⚠️ فشل تشغيل الخادم:", err);
+    console.error('Failed to start server or bot:', err);
   });
 
 export { bot };

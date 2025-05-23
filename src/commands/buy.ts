@@ -3,7 +3,12 @@ import { ObjectId } from "mongodb";
 import { connectToDB } from "../db";
 import { User } from "../models/user";
 import { Product } from "../models/product";
-import { Category } from "../models/category"; // Added Category model import
+import { Category } from "../models/category";
+import { formatCurrency } from "../utils/messages";
+import {
+  sendToAdmin,
+  createPurchaseNotificationMessage,
+} from "../helpers/adminNotificationHelper";
 import { bot } from "../bot";
 import {
   createPreOrderInDB,
@@ -12,7 +17,6 @@ import {
 } from "./preorder";
 
 const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || "5928329785";
-const formatCurrency = (amount: number): string => `${amount.toFixed(2)}₪`;
 
 interface SessionData {
   awaitingPreOrderMessage?: boolean;
@@ -158,39 +162,39 @@ export const handleBuyConfirmation = async (
     if (!telegramId) return;
 
     const db = await connectToDB();
-    const user = await db.collection<User>("users").findOne({ telegramId });
+    // تحقق من توفر المنتج مباشرة من قاعدة البيانات
     const product = await db.collection<Product>("products").findOne({
       _id: new ObjectId(productId),
     });
-
-    if (!user || !product) {
-      await ctx.reply("❌ حدث خطأ: المنتج أو المستخدم غير موجود.");
+    if (!product || !product.isAvailable || !product.emails || product.emails.length === 0) {
+      await ctx.reply("❌ نعتذر، نفذت الكمية من هذا المنتج. الرجاء المحاولة لاحقاً.");
+      // انتظر قليلاً قبل السماح بمحاولة جديدة
+      setTimeout(() => ctx.reply("🔄 يمكنك المحاولة مجدداً بعد قليل."), 3000);
       return;
     }
 
+    const user = await db.collection<User>("users").findOne({ telegramId });
+    if (!user) {
+      await ctx.reply("❌ المستخدم غير موجود.");
+      return;
+    }
     if (user.balance < product.price) {
-      await sendSupportMessage(ctx);
+      await ctx.reply("❌ ليس لديك رصيد كافٍ لإتمام الشراء.");
       return;
     }
 
-    // Fetch category name
+    // جلب التصنيف
     const category = await db.collection<Category>("categories").findOne({
       _id: new ObjectId(product.categoryId),
     });
     const categoryName = category?.name || "غير محدد";
 
-    const email = product.emails.shift(); // Take the first available email
+    // تنفيذ عملية الشراء
+    const email = product.emails.shift();
     const updatedBalance = user.balance - product.price;
+    const transactionId = new ObjectId();
 
-    // Save purchase to history
-    const description = `تم شراء المنتج ${product.name} بسعر ${formatCurrency(
-      product.price
-    )}`;
-    await saveToHistory("purchase", description, user, product, {
-      emailSold: email,
-    });
-
-    // Update user balance and history
+    // تحديث بيانات المستخدم
     await db.collection<User>("users").updateOne(
       { telegramId },
       {
@@ -202,14 +206,15 @@ export const handleBuyConfirmation = async (
             productId: product._id,
             productName: product.name,
             price: product.price,
-            categoryName, // Now part of the schema
+            categoryName,
             emailSold: email,
+            transactionId,
           },
         },
       }
     );
 
-    // Update product details and sales history
+    // تحديث المنتج
     await db.collection<Product>("products").updateOne(
       { _id: new ObjectId(productId) },
       {
@@ -219,40 +224,60 @@ export const handleBuyConfirmation = async (
         },
         $push: {
           archive: {
+            transactionId,
             emailPassword: email,
             soldTo: new ObjectId(user._id),
             soldAt: new Date(),
             price: product.price,
+            buyerDetails: {
+              name: user.fullName,
+              phone: user.phoneNumber,
+              telegramId: user.telegramId,
+            },
           },
         },
       }
     );
 
-    // Notify user of successful purchase
+    // رسالة احترافية للمشتري
+    const now = new Date();
+    const dateStr = now.toLocaleString('en-GB', { hour12: false });
     await ctx.reply(
-      `🎉 تم شراء المنتج "${product.name}" بنجاح.\n📧 البريد الإلكتروني الخاص بك: ${email}`
+      `🎉 تم شراء المنتج بنجاح\n\n` +
+      `📦 المنتج: ${product.name}\n` +
+      `💰 السعر: ${product.price.toFixed(2)}₪\n` +
+      `📧 البيانات: ${email}\n` +
+      `💳 رصيدك المتبقي: ${updatedBalance.toFixed(2)}₪\n` +
+      `\n🕒 ${dateStr}`,
+      { parse_mode: "Markdown" }
     );
 
-    // Notify admin about the purchase
-    const adminDetails = `
-      🛒 *عملية شراء جديدة*:
-      👤 *الاسم الكامل*: ${user.fullName || "غير محدد"}
-      📞 *رقم الهاتف*: ${user.phoneNumber || "غير محدد"}
-      👤 *المعرف*: ${user.telegramId}
-      📦 *المنتج*: ${product.name}
-      🗂 *التصنيف*: ${categoryName}
-      📧 *البريد الإلكتروني*: ${email}
-      📉 *الكمية المتبقية*: ${product.emails.length}  
-      💰 *السعر*: ${formatCurrency(product.price)}
-    `;
+    // إشعار المشرفين بمعلومات المنتج مع معلومات المشتري
+    await sendToAdmin(
+      `🛒 *عملية شراء جديدة*\n\n` +
+      `📦 المنتج: ${product.name}\n` +
+      `💰 السعر: ${product.price.toFixed(2)}₪\n` +
+      `📧 البيانات: ${email}\n` +
+      `\n👤 المشتري: ${user.fullName || "غير محدد"}\n` +
+      `📱 الهاتف: ${user.phoneNumber || "غير محدد"}\n` +
+      `🆔 تليجرام: ${user.telegramId}\n` +
+      `\n🕒 ${dateStr}`,
+      { parse_mode: "Markdown" }
+    );
 
-    await notifyAdmin("🛒 تنبيه عملية شراء", adminDetails);
+    // تنظيف التايمر
+    const timeoutId = confirmationTimeouts[telegramId];
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      delete confirmationTimeouts[telegramId];
+    }
   } catch (error) {
     console.error("Error in handleBuyConfirmation:", error);
     await ctx.reply("⚠️ حدث خطأ أثناء معالجة الشراء. يُرجى المحاولة مرة أخرى.");
   }
 };
 
+// Pre-order message handling and other functions remain unchanged
 export const handlePreOrderMessage = async (ctx: MyContext): Promise<void> => {
   try {
     if (

@@ -7,7 +7,7 @@ import { User } from "../models/user";
 import { Product } from "../models/product";
 import { AdminMessages, UserMessages, ErrorMessages } from "../utils/messages";
 
-const ADMIN_TELEGRAM_ID = process.env.TELEGRAM_ADMIN_ID || "5565239578";
+import { sendToAdmin } from '../helpers/adminNotificationHelper';
 
 // Function to create a pre-order
 export const createPreOrderInDB = async (
@@ -122,8 +122,9 @@ export const notifyAdminAboutPreOrder = async (preOrder: PreOrder) => {
       preOrder.message
     );
 
-    await bot.api.sendMessage(ADMIN_TELEGRAM_ID, adminMessage, {
+    await sendToAdmin(adminMessage, {
       parse_mode: "Markdown",
+      callback_data: `preorder_confirm_${preOrder._id}`
     });
   } catch (error) {
     console.error("Error sending pre-order notification to admin:", error);

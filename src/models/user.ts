@@ -28,6 +28,7 @@ export interface UserEvent {
   emailSold?: string; // New field for storing sold email
   categoryName?: string; // Add this field
   adminAction?: "Recharge" | "Discount"; // New field for specifying admin action type
+  transactionId?: ObjectId; // New field for transaction ID
 }
 
 // Payment History Entry Interface

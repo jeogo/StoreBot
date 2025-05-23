@@ -4,7 +4,7 @@ import { User } from "../models/user";
 import { Keyboard } from "grammy";
 
 // Define admin Telegram ID from environment
-const ADMIN_TELEGRAM_ID = process.env.TELEGRAM_ADMIN_ID || "5565239578";
+import { sendToAdmin } from '../helpers/adminNotificationHelper';
 
 // Handle the "/start" command
 export const handleStartCommand = async (ctx: MyContext) => {
@@ -127,55 +127,26 @@ export const handlePhoneNumberInput = async (ctx: MyContext): Promise<void> => {
 // Notify admin of a new user
 export const sendAdminNotification = async (ctx: MyContext, user: User) => {
   try {
-    // Create a detailed message for the admin
     const message = `🆕 *مستخدم جديد*
 
 *الاسم:* ${user.fullName || "غير محدد"}
 *اسم المستخدم:* ${user.username || "غير محدد"}
 *معرف التليجرام:* \`${user.telegramId}\`
 *رقم الهاتف:* ${user.phoneNumber || "غير محدد"}
-*تاريخ التسجيل:* ${
-      user.registerDate ? user.registerDate.toLocaleDateString() : "غير محدد"
-    }
+*تاريخ التسجيل:* ${user.registerDate ? user.registerDate.toLocaleDateString() : "غير محدد"}
 
 *الإجراءات:*
 • يرجى مراجعة وقبول المستخدم
 • تحقق من صحة المعلومات المقدمة`;
 
-    // Send the message to the admin
-    await ctx.api.sendMessage(ADMIN_TELEGRAM_ID, message, {
+    await sendToAdmin(message, {
       parse_mode: "Markdown",
-      // Optional: Add inline keyboard for quick actions
-      reply_markup: {
-        inline_keyboard: [
-          [
-            {
-              text: "✅ قبول",
-              callback_data: `accept_user_${user.telegramId}`,
-            },
-            {
-              text: "❌ رفض",
-              callback_data: `reject_user_${user.telegramId}`,
-            },
-          ],
-        ],
-      },
+      callback_data: `verify_user_${user.telegramId}`
     });
 
     console.log(`Admin notification sent for user: ${user.telegramId}`);
   } catch (error) {
     console.error("Error sending admin notification:", error);
-
-    // Additional error handling
-    try {
-      // Fallback to sending a simple text message if Markdown fails
-      await ctx.api.sendMessage(
-        ADMIN_TELEGRAM_ID,
-        `إشعار مستخدم جديد\nمعرف التليجرام: ${user.telegramId}`
-      );
-    } catch (fallbackError) {
-      console.error("Fallback admin notification failed:", fallbackError);
-    }
   }
 };
 

@@ -6,7 +6,7 @@ import { Category } from "../models/category";
 import { bot } from "../bot";
 
 // Constants
-const ADMIN_TELEGRAM_ID = process.env.TELEGRAM_ADMIN_ID || "5928329785";
+import { sendToAdmin } from '../helpers/adminNotificationHelper';
 const DIVIDER = "▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰";
 
 // Types
@@ -88,11 +88,11 @@ const notifyAdminProductStatus = async (
       .collection<CategoryWithId>("categories")
       .findOne({ _id: product.categoryId });
 
-    await bot.api.sendMessage(
-      ADMIN_TELEGRAM_ID,
-      createAdminNotification(product, status, userId, category),
-      { parse_mode: "Markdown" }
-    );
+    const message = createAdminNotification(product, status, userId, category);
+    await sendToAdmin(message, {
+      parse_mode: "Markdown",
+      callback_data: `product_status_${product._id}_${status}`
+    });
   } catch (error) {
     console.error("Admin notification error:", error);
   }
