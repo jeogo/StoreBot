@@ -4,7 +4,7 @@ import { connectToDB } from "../db";
 import { User } from "../models/user";
 import { Product } from "../models/product";
 import { Category } from "../models/category";
-import { formatCurrency } from "../utils/messages";
+import { formatCurrency, UserMessages } from "../utils/messages";
 import {
   sendToAdmin,
   createPurchaseNotificationMessage,
@@ -159,13 +159,12 @@ export const handleBuyConfirmation = async (
     if (!telegramId) return;
 
     const db = await connectToDB();
-    // تحقق من توفر المنتج مباشرة من قاعدة البيانات
     const product = await db.collection<Product>("products").findOne({
       _id: new ObjectId(productId),
     });
+    
     if (!product || !product.isAvailable || !product.emails || product.emails.length === 0) {
       await ctx.reply("❌ نعتذر، نفذت الكمية من هذا المنتج. الرجاء المحاولة لاحقاً.");
-      // انتظر قليلاً قبل السماح بمحاولة جديدة
       setTimeout(() => ctx.reply("🔄 يمكنك المحاولة مجدداً بعد قليل."), 3000);
       return;
     }
@@ -180,18 +179,18 @@ export const handleBuyConfirmation = async (
       return;
     }
 
-    // جلب التصنيف
+    // Get category for admin notification
     const category = await db.collection<Category>("categories").findOne({
       _id: new ObjectId(product.categoryId),
     });
     const categoryName = category?.name || "غير محدد";
 
-    // تنفيذ عملية الشراء
+    // Process purchase
     const email = product.emails.shift();
     const updatedBalance = user.balance - product.price;
     const transactionId = new ObjectId();
-
-    // تحديث بيانات المستخدم
+    
+    // Update user data
     await db.collection<User>("users").updateOne(
       { telegramId },
       {
@@ -211,13 +210,14 @@ export const handleBuyConfirmation = async (
       }
     );
 
-    // تحديث المنتج
+    // Update product
+    const remainingQuantity = (product.emails || []).length;
     await db.collection<Product>("products").updateOne(
       { _id: new ObjectId(productId) },
       {
         $set: {
           emails: product.emails,
-          isAvailable: product.emails.length > 0,
+          isAvailable: remainingQuantity > 0,
         },
         $push: {
           archive: {
@@ -234,38 +234,33 @@ export const handleBuyConfirmation = async (
           },
         },
       }
-    );    // رسالة احترافية للمشتري
-    const now = new Date();
-    const dateStr = now.toLocaleString('en-GB', { 
-      timeZone: 'Asia/Jerusalem',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false
-    });
-    await ctx.reply(
-      `🎉 تم شراء المنتج بنجاح\n\n` +
-      `📦 المنتج: ${product.name}\n` +
-      `💰 السعر: ${product.price.toFixed(2)}₪\n` +
-      `📧 البيانات: ${email || "-"}\n` +
-      `💳 رصيدك المتبقي: ${updatedBalance.toFixed(2)}₪\n` +
-      `\n🕒 ${dateStr}`
-    );    // إشعار المشرفين بمعلومات المنتج مع معلومات المشتري
-    await sendToAdmin(
-      `🛒 عملية شراء جديدة\n\n` +
-      `📦 المنتج: ${product.name}\n` +
-      `💰 السعر: ${product.price.toFixed(2)}₪\n` +
-      `📧 البيانات: ${email || "-"}\n` +
-      `\n👤 المشتري: ${user.fullName || "غير محدد"}\n` +
-      `📱 الهاتف: ${user.phoneNumber || "غير محدد"}\n` +
-      `🆔 تليجرام: ${user.telegramId}\n` +
-      `\n🕒 ${dateStr}`
     );
 
-    // تنظيف التايمر
+    // Send user confirmation message
+    await ctx.reply(UserMessages.formatPurchaseMessage(
+      user.fullName || "غير محدد",
+      user.username || "غير محدد",
+      product.name,
+      product.price,
+      updatedBalance,
+      email || "-"
+    ), { parse_mode: "Markdown" });
+
+    // Notify admins with detailed information including remaining quantity
+    await sendToAdmin(createPurchaseNotificationMessage({
+      buyerName: user.fullName || "غير محدد",
+      buyerPhone: user.phoneNumber || "غير محدد",
+      buyerTelegramId: user.telegramId.toString(),
+      productName: product.name,
+      categoryName,
+      price: product.price,
+      previousBalance: user.balance,
+      newBalance: updatedBalance,
+      remainingQuantity,
+      transactionId: transactionId.toString()
+    }), { parse_mode: "Markdown" });
+
+    // Clean up timer
     const timeoutId = confirmationTimeouts[telegramId];
     if (timeoutId) {
       clearTimeout(timeoutId);

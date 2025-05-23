@@ -135,6 +135,7 @@ export function createPurchaseNotificationMessage(
         transactionId: string;
     }
 ): string {
+    const now = new Date();
     return `
 📢 *تنبيه: عملية شراء جديدة*
 
@@ -154,7 +155,7 @@ export function createPurchaseNotificationMessage(
 ▪️ الرصيد الجديد: ${data.newBalance} ₪
 ▪️ المبلغ المدفوع: ${data.price} ₪
 
-⏰ تاريخ العملية: ${new Date().toLocaleString('en-GB', { 
+⏰ تاريخ العملية: ${now.toLocaleString('en-GB', { 
     timeZone: 'Asia/Jerusalem',
     year: 'numeric',
     month: '2-digit',

@@ -16,22 +16,33 @@ export const AdminMessages = {
 📄 *ملاحظات المستخدم*: ${message}`,
 };
 
-export const UserMessages = {
-  formatPurchaseMessage: (
+export const UserMessages = {  formatPurchaseMessage: (
     fullName: string,
     userName: string,
     productName: string,
     price: number,
     newBalance: number,
     email: string
-  ): string =>
-    `✅ *تم الشراء بنجاح*:  
+  ): string => {
+    const now = new Date();
+    return `✅ *تم الشراء بنجاح*:  
 👤 *الاسم الكامل*: ${fullName}  
 🔹 *اسم المستخدم*: ${userName}  
 📦 *المنتج*: ${productName}  
-💰 *السعر*: ${price} وحدة  
-💳 *الرصيد المتبقي*: ${newBalance} وحدة  
-📧 *الحساب*: ${email}`,
+💰 *السعر*: ${price} ₪  
+💳 *الرصيد المتبقي*: ${newBalance} ₪  
+📧 *الحساب*: ${email}
+⏰ *تاريخ العملية*: ${now.toLocaleString('en-GB', { 
+    timeZone: 'Asia/Jerusalem',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+})}`;
+  },
 
   formatInsufficientFundsMessage: (balance: number, price: number): string =>
     `رصيدك غير كافٍ. تحتاج إلى ${price - balance} وحدة إضافية لإتمام الشراء.`,
