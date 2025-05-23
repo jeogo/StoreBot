@@ -236,7 +236,7 @@ export const handleBuyConfirmation = async (
       }
     );    // رسالة احترافية للمشتري
     const now = new Date();
-    const dateStr = now.toLocaleString('en-GB', { 
+    const dateStr = now.toLocaleString('en-GB', {
       timeZone: 'Asia/Jerusalem',
       year: 'numeric',
       month: '2-digit',
@@ -253,7 +253,9 @@ export const handleBuyConfirmation = async (
       `📧 البيانات: ${email || "-"}\n` +
       `💳 رصيدك المتبقي: ${updatedBalance.toFixed(2)}₪\n` +
       `\n🕒 ${dateStr}`
-    );    // إشعار المشرفين بمعلومات المنتج مع معلومات المشتري
+    );
+
+    // إشعار المشرفين بمعلومات المنتج مع معلومات المشتري والكمية المتبقية
     await sendToAdmin(
       `🛒 عملية شراء جديدة\n\n` +
       `📦 المنتج: ${product.name}\n` +
@@ -262,7 +264,8 @@ export const handleBuyConfirmation = async (
       `\n👤 المشتري: ${user.fullName || "غير محدد"}\n` +
       `📱 الهاتف: ${user.phoneNumber || "غير محدد"}\n` +
       `🆔 تليجرام: ${user.telegramId}\n` +
-      `\n🕒 ${dateStr}`
+      `📦 الكمية المتبقية: ${product.emails.length}\n` +
+      `🕒 ${dateStr}`
     );
 
     // تنظيف التايمر
