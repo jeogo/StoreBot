@@ -236,7 +236,7 @@ export const handleBuyConfirmation = async (
       }
     );    // رسالة احترافية للمشتري
     const now = new Date();
-    const dateStr = now.toLocaleString('ar-SA', { 
+    const dateStr = now.toLocaleString('en-GB', { 
       timeZone: 'Asia/Jerusalem',
       year: 'numeric',
       month: '2-digit',

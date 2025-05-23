@@ -154,7 +154,16 @@ export function createPurchaseNotificationMessage(
 ▪️ الرصيد الجديد: ${data.newBalance} ₪
 ▪️ المبلغ المدفوع: ${data.price} ₪
 
-⏰ تاريخ العملية: ${new Date().toLocaleString('ar-SA')}
+⏰ تاريخ العملية: ${new Date().toLocaleString('en-GB', { 
+    timeZone: 'Asia/Jerusalem',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+})}
 🆔 رقم العملية: ${data.transactionId}
 
 ملاحظة: يرجى الضغط على زر التأكيد أدناه عند استلام الإشعار.`;
