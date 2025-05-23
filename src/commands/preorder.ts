@@ -100,11 +100,8 @@ const logPreOrderHistory = async (preOrder: PreOrder, userMessage: string) => {
  * Sends a confirmation message to the user.
  */
 export const notifyUserAboutPreOrder = async (preOrder: PreOrder) => {
-  try {
-    const userMessage = UserMessages.preorderSuccess(preOrder.productName);
-    await bot.api.sendMessage(preOrder.userTelegramId, userMessage, {
-      parse_mode: "Markdown",
-    });
+  try {    const userMessage = UserMessages.preorderSuccess(preOrder.productName);
+    await bot.api.sendMessage(preOrder.userTelegramId, userMessage);
   } catch (error) {
     console.error("Error sending pre-order confirmation to user:", error);
   }

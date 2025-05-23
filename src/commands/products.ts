@@ -46,9 +46,9 @@ const createProductDetails = (
   quantity?: number
 ): string => {
   return [
-    `📦 *تفاصيل المنتج*`,
+    `📦 تفاصيل المنتج`,
     DIVIDER,
-    `*${product.name}*`,
+    `${product.name}`,
     `💰 السعر: ${formatPrice(product.price)}`,
     `📁 الفئة: ${category?.name || "غير محدد"}`,
     quantity !== undefined ? `📊 الكمية المتوفرة: ${quantity}` : "",

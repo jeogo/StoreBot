@@ -26,6 +26,17 @@ interface NotificationOptions {
 
 const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_DELAY = 1000; // 1 second
+const TELEGRAM_MAX_MESSAGE_LENGTH = 4096;
+
+function splitMessage(message: string, maxLength: number = TELEGRAM_MAX_MESSAGE_LENGTH): string[] {
+    const parts: string[] = [];
+    let current = 0;
+    while (current < message.length) {
+        parts.push(message.slice(current, current + maxLength));
+        current += maxLength;
+    }
+    return parts;
+}
 
 export async function sendToAdmin(
     message: string,
@@ -43,40 +54,44 @@ export async function sendToAdmin(
     for (const adminId of adminIds) {
         let success = false;
         let errorMsg = undefined;
-        try {
-            await bot.api.sendMessage(adminId, message, {
-                parse_mode: options.parse_mode,
-                reply_markup: options.callback_data ? {
-                    inline_keyboard: [
-                        [
-                            {
-                                text: "✅ تأكيد استلام الطلب",
-                                callback_data: `${options.callback_data}_${adminId}`
-                            }
+        try {            // تقسيم الرسالة الطويلة
+            const messageParts = splitMessage(message);
+            for (let i = 0; i < messageParts.length; i++) {
+                await bot.api.sendMessage(adminId, messageParts[i], {
+                    reply_markup: i === messageParts.length - 1 && options.callback_data ? {
+                        inline_keyboard: [
+                            [
+                                {
+                                    text: "✅ تأكيد استلام الطلب",
+                                    callback_data: `${options.callback_data}_${adminId}`
+                                }
+                            ]
                         ]
-                    ]
-                } : undefined
-            });
+                    } : undefined
+                });
+            }
             success = true;
         } catch (error) {
             errorMsg = error instanceof Error ? error.message : String(error);
             // Retry logic
             if (retryCount < MAX_RETRY_ATTEMPTS) {
                 try {
-                    await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * (retryCount + 1)));
-                    await bot.api.sendMessage(adminId, message, {
-                        parse_mode: options.parse_mode,
-                        reply_markup: options.callback_data ? {
-                            inline_keyboard: [
-                                [
-                                    {
-                                        text: "✅ تأكيد استلام الطلب",
-                                        callback_data: `${options.callback_data}_${adminId}`
-                                    }
+                    await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * (retryCount + 1)));                    // إعادة المحاولة مع تقسيم الرسالة
+                    const messageParts = splitMessage(message);
+                    for (let i = 0; i < messageParts.length; i++) {
+                        await bot.api.sendMessage(adminId, messageParts[i], {
+                            reply_markup: i === messageParts.length - 1 && options.callback_data ? {
+                                inline_keyboard: [
+                                    [
+                                        {
+                                            text: "✅ تأكيد استلام الطلب",
+                                            callback_data: `${options.callback_data}_${adminId}`
+                                        }
+                                    ]
                                 ]
-                            ]
-                        } : undefined
-                    });
+                            } : undefined
+                        });
+                    }
                     success = true;
                     errorMsg = undefined;
                 } catch (retryError) {

@@ -28,11 +28,8 @@ type MyContext = Context & SessionFlavor<SessionData>;
 const confirmationTimeouts: { [key: string]: NodeJS.Timeout } = {};
 
 // Notify Admin Function
-const notifyAdmin = async (title: string, details: string): Promise<void> => {
-  try {
-    await bot.api.sendMessage(ADMIN_TELEGRAM_ID, `*${title}*\n\n${details}`, {
-      parse_mode: "Markdown",
-    });
+const notifyAdmin = async (title: string, details: string): Promise<void> => {  try {
+    await bot.api.sendMessage(ADMIN_TELEGRAM_ID, `${title}\n\n${details}`);
   } catch (error) {
     console.error("Error notifying admin:", error);
   }
@@ -237,32 +234,35 @@ export const handleBuyConfirmation = async (
           },
         },
       }
-    );
-
-    // رسالة احترافية للمشتري
+    );    // رسالة احترافية للمشتري
     const now = new Date();
-    const dateStr = now.toLocaleString('en-GB', { hour12: false });
+    const dateStr = now.toLocaleString('ar-SA', { 
+      timeZone: 'Asia/Jerusalem',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
     await ctx.reply(
       `🎉 تم شراء المنتج بنجاح\n\n` +
       `📦 المنتج: ${product.name}\n` +
       `💰 السعر: ${product.price.toFixed(2)}₪\n` +
-      `📧 البيانات: ${email}\n` +
+      `📧 البيانات: ${email || "-"}\n` +
       `💳 رصيدك المتبقي: ${updatedBalance.toFixed(2)}₪\n` +
-      `\n🕒 ${dateStr}`,
-      { parse_mode: "Markdown" }
-    );
-
-    // إشعار المشرفين بمعلومات المنتج مع معلومات المشتري
+      `\n🕒 ${dateStr}`
+    );    // إشعار المشرفين بمعلومات المنتج مع معلومات المشتري
     await sendToAdmin(
-      `🛒 *عملية شراء جديدة*\n\n` +
+      `🛒 عملية شراء جديدة\n\n` +
       `📦 المنتج: ${product.name}\n` +
       `💰 السعر: ${product.price.toFixed(2)}₪\n` +
-      `📧 البيانات: ${email}\n` +
+      `📧 البيانات: ${email || "-"}\n` +
       `\n👤 المشتري: ${user.fullName || "غير محدد"}\n` +
       `📱 الهاتف: ${user.phoneNumber || "غير محدد"}\n` +
       `🆔 تليجرام: ${user.telegramId}\n` +
-      `\n🕒 ${dateStr}`,
-      { parse_mode: "Markdown" }
+      `\n🕒 ${dateStr}`
     );
 
     // تنظيف التايمر
@@ -385,3 +385,23 @@ export const handlePreOrderConfirmation = async (
     );
   }
 };
+
+// دالة مساعدة لهروب رموز Markdown (لم تعد مستخدمة)
+// function escapeMarkdownV2(text: string): string {
+//   return text
+//     .replace(/_/g, '\\_')
+//     .replace(/\*/g, '\\*')
+//     .replace(/\[/g, '\\[')
+//     .replace(/`/g, '\\`')
+//     .replace(/~/g, '\\~')
+//     .replace(/>/g, '\\>')
+//     .replace(/#/g, '\\#')
+//     .replace(/\+/g, '\\+')
+//     .replace(/\-/g, '\\-')
+//     .replace(/=/g, '\\=')
+//     .replace(/\|/g, '\\|')
+//     .replace(/\{/g, '\\{')
+//     .replace(/\}/g, '\\}')
+//     .replace(/\./g, '\\.')
+//     .replace(/!/g, '\\!');
+// }
